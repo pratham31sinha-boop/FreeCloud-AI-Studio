@@ -178,10 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
       durationButtons.forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       selectedDuration = parseFloat(btn.dataset.duration);
-      targetWorkers = parseInt(btn.dataset.workers, 10);
+      targetWorkers = parseInt(btn.dataset.workers, 10) || 4;
 
-      allocationBadge.textContent = `${targetWorkers} Workers Target`;
-      fleetStatusText.textContent = `${targetWorkers} Target Workers`;
+      allocationBadge.textContent = `${targetWorkers} Cloud Servers (16GB RAM Each)`;
+      fleetStatusText.textContent = `${targetWorkers} Cloud Servers (16GB Cluster)`;
     });
   });
 
@@ -703,8 +703,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const statusClass = chunk.status.toLowerCase();
       const workerLabel = chunk.assigned_worker_id
-        ? chunk.assigned_worker_id.replace('gha-runner-', 'Runner-')
-        : `Worker Slot ${idx + 1}`;
+        ? chunk.assigned_worker_id.replace('gha-runner-', 'Cloud Server ')
+        : `Cloud Server Slot ${idx + 1} (16GB RAM)`;
 
       card.innerHTML = `
         <span class="worker-name" title="${workerLabel}">${workerLabel}</span>

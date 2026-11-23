@@ -38,22 +38,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Supports up to 10 concurrent runners matching the 15-minute job allocation tier
-        worker_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        # Dedicated 4-server cluster (each runner with 16GB+ memory pool)
+        worker_index: [1, 2, 3, 4]
 
     steps:
       - name: Check Worker Index vs Target Count
         id: check_active
         run: |
-          TARGET="${{ inputs.worker_count }}"
-          INDEX="${{ matrix.worker_index }}"
-          if [ "$INDEX" -le "$TARGET" ]; then
-            echo "active=true" >> "$GITHUB_OUTPUT"
-            echo "Runner $INDEX is active for job ${{ inputs.job_id }} (Target fleet: $TARGET)"
-          else
-            echo "active=false" >> "$GITHUB_OUTPUT"
-            echo "Runner $INDEX is idle / exceeds target worker allocation of $TARGET. Skipping."
-          fi
+          echo "active=true" >> "$GITHUB_OUTPUT"
+          echo "Cloud Server ${{ matrix.worker_index }}/4 is active for job ${{ inputs.job_id }} (Dedicated 4-Server Cluster)"
 
       - name: Checkout FreeCloud Repository
         if: steps.check_active.outputs.active == 'true'

@@ -175,11 +175,17 @@ class VideoProcessor:
         ]
 
         if audio_source and audio_source.is_file():
-            cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-shortest"])
+            cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-b:a", "192k", "-shortest"])
+        else:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
 
         cmd.extend([
             "-c:v",
             "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
             "-pix_fmt",
             "yuv420p",
             "-movflags",
