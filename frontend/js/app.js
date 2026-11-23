@@ -136,9 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         const data = await res.json();
         if (data.online) {
-          comfyStatusText.textContent = `ComfyUI Port ${data.port}`;
+          const portNum = data.base_url ? data.base_url.split(':').pop().replace('/', '') : '8188';
+          comfyStatusText.textContent = `ComfyUI Port ${portNum}`;
           if (comfyNodeStatus) {
-            comfyNodeStatus.textContent = `Online (Port ${data.port})`;
+            comfyNodeStatus.textContent = `Online (Port ${portNum})`;
             comfyNodeStatus.className = 'badge badge-emerald';
           }
         } else {
@@ -465,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
       jobStateTag.textContent = `Job: ${currentJobId.slice(0, 8)}...`;
       jobStateTag.className = 'job-state-tag running';
 
+      updateDashboard(jobRecord);
       startJobPolling(currentJobId);
     } catch (err) {
       alert(`Submission Error: ${err.message}`);

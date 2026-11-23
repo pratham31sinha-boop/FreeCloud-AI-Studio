@@ -45,14 +45,14 @@ class GenerationPipeline:
         # 3. Create job and dispatch workers via WorkerOrchestrator
         job_record = await worker_orchestrator.submit_job(request)
 
-        # 4. If source video uploaded, extract frames for chunk conditioning
+        # 4. If source video uploaded, extract sample frames for chunk conditioning
         if request.original_video_id:
             src_video = storage_manager.uploads_dir / request.original_video_id
             if src_video.is_file():
                 frames_dir = storage_manager.artifacts_dir / f"extracted_{job_record.job_id}"
                 try:
-                    video_processor.extract_frames(src_video, frames_dir, target_fps=12.0)
-                    logger.info("Extracted source video frames for job %s into %s", job_record.job_id, frames_dir)
+                    video_processor.extract_frames(src_video, frames_dir, target_fps=2.0, max_frames=24)
+                    logger.info("Extracted sample frames for job %s into %s", job_record.job_id, frames_dir)
                 except Exception as exc:
                     logger.error("Failed extracting frames for job %s: %s", job_record.job_id, exc)
 
