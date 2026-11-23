@@ -70,7 +70,7 @@ class WorkerOrchestrator:
     def _load_jobs_from_disk(self) -> None:
         try:
             p = settings.data_dir / "jobs_registry.json"
-            if p.is_file():
+            if p.is_file() and p.stat().st_size > 2:
                 with open(p, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 for jid, jdict in data.items():

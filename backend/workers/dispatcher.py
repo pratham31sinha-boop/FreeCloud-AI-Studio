@@ -57,11 +57,7 @@ class GitHubActionsDispatcher(BaseWorkerDispatcher):
             "Authorization": f"Bearer {self.pat_token}",
             "User-Agent": "FreeCloud-AI-Studio-Orchestrator",
         }
-        backend_endpoint = (
-            settings.public_backend_url
-            if settings.public_backend_url
-            else f"http://{settings.host}:{settings.port}"
-        )
+        backend_endpoint = settings.get_public_backend_url()
         payload = {
             "ref": "main",
             "inputs": {

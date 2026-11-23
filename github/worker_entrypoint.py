@@ -43,7 +43,7 @@ class WorkerRunner:
         self.model_name = model
         self.session_token: Optional[str] = None
 
-    def _post_json(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_json(self, path: str, data: Dict[str, Any], retries: int = 4) -> Dict[str, Any]:
         url = f"{self.backend_url}{path}"
         req = urllib.request.Request(
             url,
@@ -51,26 +51,36 @@ class WorkerRunner:
             headers={"Content-Type": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8")
-            logger.error("HTTP error calling %s: %d - %s", url, exc.code, body)
-            raise
-        except Exception as exc:
-            logger.error("Network error calling %s: %s", url, exc)
-            raise
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8")
+                logger.error("HTTP error calling %s: %d - %s", url, exc.code, body)
+                raise
+            except Exception as exc:
+                logger.warning("Network attempt %d/%d calling %s: %s", attempt + 1, retries, url, exc)
+                if attempt == retries - 1:
+                    raise
+                time.sleep(3)
 
-    def _get_json(self, path: str) -> Dict[str, Any]:
+    def _get_json(self, path: str, retries: int = 4) -> Dict[str, Any]:
         url = f"{self.backend_url}{path}"
         req = urllib.request.Request(
             url,
             headers={"Accept": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
             method="GET",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        for attempt in range(retries):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except Exception as exc:
+                logger.warning("Network attempt %d/%d calling %s: %s", attempt + 1, retries, url, exc)
+                if attempt == retries - 1:
+                    raise
+                time.sleep(3)
 
     def _upload_file(self, path: str, file_path: str) -> Dict[str, Any]:
         """Upload chunk artifact using standard multipart form."""

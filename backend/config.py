@@ -46,6 +46,23 @@ class Settings(BaseModel):
     public_backend_url: str = Field(
         default_factory=lambda: os.getenv("FREECLOUD_PUBLIC_URL", "")
     )
+
+    def get_public_backend_url(self) -> str:
+        """Dynamically resolve public backend tunnel URL from environment or .env file."""
+        env_file = self.base_dir / ".env"
+        if env_file.is_file():
+            try:
+                for line in env_file.read_text().splitlines():
+                    if line.startswith("FREECLOUD_PUBLIC_URL="):
+                        val = line.split("=", 1)[1].strip()
+                        if val:
+                            return val
+            except Exception:
+                pass
+        env_val = os.getenv("FREECLOUD_PUBLIC_URL")
+        if env_val and env_val.strip():
+            return env_val.strip()
+        return self.public_backend_url or f"http://{self.host}:{self.port}"
     worker_heartbeat_timeout_sec: int = Field(default=120)
     worker_task_lease_sec: int = Field(default=300)
     worker_max_retries: int = Field(default=2)
