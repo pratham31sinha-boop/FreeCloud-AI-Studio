@@ -83,6 +83,7 @@ class WorkerOrchestrator:
         target_workers = calculate_worker_allocation(request.duration_minutes)
         chunks = plan_task_chunks(job_id, request)
 
+        initial_est = round(25.0 + (request.duration_minutes * 60.0 * 1.5) / max(1, target_workers), 1)
         record = JobRecord(
             job_id=job_id,
             request=request,
@@ -94,6 +95,10 @@ class WorkerOrchestrator:
             progress_percent=0.0,
             stage_message=f"Prepared {len(chunks)} scene chunks for {target_workers} workers",
             chunks=chunks,
+            elapsed_sec=0.0,
+            estimated_total_sec=initial_est,
+            estimated_remaining_sec=initial_est,
+            active_workers_count=0,
         )
         self.jobs[job_id] = record
 
@@ -403,7 +408,46 @@ class WorkerOrchestrator:
         logger.info("Assembled final coherent video for job %s: %s (%s)", job.job_id, output_target, video_metadata)
 
     def get_job(self, job_id: str) -> Optional[JobRecord]:
-        return self.jobs.get(job_id)
+        job = self.jobs.get(job_id)
+        if not job:
+            return None
+
+        now = time.time()
+        job.elapsed_sec = round(now - job.created_at, 1)
+
+        # Count active workers working on this job
+        job.active_workers_count = sum(
+            1
+            for w in self.workers.values()
+            if w.assigned_job_id == job_id
+            and (now - w.last_heartbeat) < settings.worker_heartbeat_timeout_sec
+        )
+
+        if job.status == JobStatus.COMPLETED:
+            job.estimated_remaining_sec = 0.0
+            job.progress_percent = 100.0
+        elif job.total_chunks > 0 and job.completed_chunks > 0:
+            completed_times = [
+                c.metrics.get("render_duration_sec", 0.0)
+                for c in job.chunks
+                if c.status == TaskChunkStatus.COMPLETED
+                and c.metrics.get("render_duration_sec")
+            ]
+            avg_render = (
+                sum(completed_times) / max(1, len(completed_times))
+                if completed_times
+                else 3.0
+            )
+            rem_chunks = job.total_chunks - job.completed_chunks
+            concurrency = max(1, min(job.target_worker_count, rem_chunks))
+            rem_sec = round((rem_chunks * avg_render) / concurrency + 3.0, 1)
+            job.estimated_remaining_sec = max(2.0, rem_sec)
+        elif job.estimated_total_sec:
+            job.estimated_remaining_sec = max(
+                5.0, round(job.estimated_total_sec - job.elapsed_sec, 1)
+            )
+
+        return job
 
     def list_jobs(self) -> List[JobRecord]:
         return sorted(

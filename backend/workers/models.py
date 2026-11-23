@@ -128,4 +128,8 @@ class JobRecord(BaseModel):
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
     completed_at: Optional[float] = None
+    elapsed_sec: float = 0.0
+    estimated_remaining_sec: Optional[float] = None
+    estimated_total_sec: Optional[float] = None
+    active_workers_count: int = 0
     error: Optional[str] = None

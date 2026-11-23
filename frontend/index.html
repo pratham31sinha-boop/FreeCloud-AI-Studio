@@ -118,17 +118,41 @@
               </div>
             </div>
 
-            <!-- Story Script / Prompt Area -->
+            <!-- Story Script / Universal Narrative Direction -->
             <div class="form-group">
-              <label class="form-label" for="storyPromptInput">
-                <span>Scene Script & Narrative Direction</span>
-                <span class="label-hint">Dialogue & Action Continuity</span>
-              </label>
+              <div class="prompt-header-row">
+                <label class="form-label" for="storyPromptInput" style="margin-bottom: 0;">
+                  <span>Universal Narrative Prompt</span>
+                  <span class="label-hint">Text-to-Video & Video-to-Video</span>
+                </label>
+                <div class="prompt-actions-bar">
+                  <button type="button" id="btnRandomPrompt" class="btn-prompt-action" title="Insert a creative random cinematic scene">
+                    <span class="dice-icon">🎲</span>
+                    <span>Random Prompt</span>
+                  </button>
+                  <button type="button" id="btnSurpriseMe" class="btn-prompt-action surprise-gradient" title="Generate random topic and start generation immediately">
+                    <span>⚡ Random & Generate</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Quick Topic Category Chips -->
+              <div class="prompt-chips-row">
+                <span class="chips-label">Themes:</span>
+                <button type="button" class="prompt-chip" data-theme="cyberpunk">⚔️ Cyberpunk</button>
+                <button type="button" class="prompt-chip" data-theme="fantasy">🐉 Dragon Fantasy</button>
+                <button type="button" class="prompt-chip" data-theme="shinkai">🌸 Shinkai Sunset</button>
+                <button type="button" class="prompt-chip" data-theme="scifi">🚀 Sci-Fi Mecha</button>
+                <button type="button" class="prompt-chip" data-theme="samurai">🎋 Samurai Duel</button>
+                <button type="button" class="prompt-chip" data-theme="ghibli">🍃 Ghibli Magic</button>
+                <button type="button" class="prompt-chip" data-theme="jagdhatri">🥋 Jagdhatri Action</button>
+              </div>
+
               <textarea
                 id="storyPromptInput"
                 rows="4"
                 class="form-textarea"
-                placeholder="e.g. Jagdhatri enters the warehouse, disarms the first operative with a rapid spin kick, eyes locked in focus. Jash covers the exit flank with calm determination."
+                placeholder="e.g. Neon-lit cyberpunk city at night, rain pouring down towering holograms. A cybernetic katana warrior dashes across rooftops under glowing signs."
                 required
               ></textarea>
             </div>
@@ -140,21 +164,21 @@
                 <span class="allocation-badge" id="allocationBadge">4 Workers Target</span>
               </div>
               <div class="duration-grid" id="durationSelector">
-                <button type="button" class="duration-btn" data-duration="0.0167" data-workers="1">
+                <button type="button" class="duration-btn" data-duration="0.0167" data-workers="4">
                   <span class="duration-time">1 Sec</span>
-                  <span class="duration-workers">1 Worker</span>
+                  <span class="duration-workers">4 Workers</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.0833" data-workers="1">
+                <button type="button" class="duration-btn" data-duration="0.0833" data-workers="4">
                   <span class="duration-time">5 Sec</span>
-                  <span class="duration-workers">1 Worker</span>
+                  <span class="duration-workers">4 Workers</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.1667" data-workers="2">
+                <button type="button" class="duration-btn" data-duration="0.1667" data-workers="4">
                   <span class="duration-time">10 Sec</span>
-                  <span class="duration-workers">2 Workers</span>
+                  <span class="duration-workers">4 Workers</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.5" data-workers="3">
+                <button type="button" class="duration-btn" data-duration="0.5" data-workers="4">
                   <span class="duration-time">30 Sec</span>
-                  <span class="duration-workers">3 Workers</span>
+                  <span class="duration-workers">4 Workers</span>
                 </button>
                 <button type="button" class="duration-btn active" data-duration="1.0" data-workers="4">
                   <span class="duration-time">1 Min</span>
@@ -263,6 +287,25 @@
             </div>
             <div class="progress-bar-track">
               <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+            </div>
+
+            <!-- Real-Time Timing & Cloud Fleet Telemetry -->
+            <div class="telemetry-bar">
+              <div class="telemetry-chip">
+                <span class="telemetry-icon">⏱️</span>
+                <span>ETA:</span>
+                <strong id="telemetryEta">—</strong>
+              </div>
+              <div class="telemetry-chip">
+                <span class="telemetry-icon">⏳</span>
+                <span>Elapsed:</span>
+                <strong id="telemetryElapsed">0s</strong>
+              </div>
+              <div class="telemetry-chip">
+                <span class="telemetry-icon">⚡</span>
+                <span>Fleet:</span>
+                <strong id="telemetryFleet">4 Target Workers</strong>
+              </div>
             </div>
           </div>
 

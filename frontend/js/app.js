@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let targetWorkers = 4;
   let currentJobId = null;
   let pollInterval = null;
+  let elapsedTimerInterval = null;
+  let jobStartTime = null;
   let uploadedVideoId = null;
 
   // --- DOM Elements: Navigation ---
@@ -27,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const allocationBadge = document.getElementById('allocationBadge');
   const durationButtons = document.querySelectorAll('.duration-btn');
   const jagdhatriPresetBtn = document.getElementById('jagdhatriPresetBtn');
+  const btnRandomPrompt = document.getElementById('btnRandomPrompt');
+  const btnSurpriseMe = document.getElementById('btnSurpriseMe');
+  const promptChips = document.querySelectorAll('.prompt-chip');
   const storyPromptInput = document.getElementById('storyPromptInput');
   const animeStyleSelect = document.getElementById('animeStyleSelect');
   const resolutionSelect = document.getElementById('resolutionSelect');
@@ -43,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressStage = document.getElementById('progressStage');
   const progressPercent = document.getElementById('progressPercent');
   const progressBarFill = document.getElementById('progressBarFill');
+  const telemetryEta = document.getElementById('telemetryEta');
+  const telemetryElapsed = document.getElementById('telemetryElapsed');
+  const telemetryFleet = document.getElementById('telemetryFleet');
   const fleetCountLabel = document.getElementById('fleetCountLabel');
   const workerGrid = document.getElementById('workerGrid');
   const simulateWorkerBtn = document.getElementById('simulateWorkerBtn');
@@ -193,6 +201,138 @@ document.addEventListener('DOMContentLoaded', () => {
       jagdhatriPresetBtn.style.borderColor = 'rgba(99, 102, 241, 0.3)';
     }, 800);
   });
+
+  // ==================== UNIVERSAL PROMPT LIBRARY & RANDOMIZER ====================
+  const UNIVERSAL_PROMPT_LIBRARY = {
+    cyberpunk: {
+      style: 'ufotable_digital',
+      prompts: [
+        'Neon-lit Neo-Tokyo rain-drenched streets at night, holographic advertisements flickering. A cybernetic katana warrior in glowing trenchcoat dashes across towering rooftops under digital storm clouds.',
+        'Futuristic underground hacking den with cascading green phosphor terminals. A cyborg operative with illuminated neural implants interfaces with an AI core amidst dense steam pipes.',
+        'High-speed anti-gravity hoverbike pursuit through illuminated subterranean mega-tunnels. Cyberpunk drone pursuit firing plasma bursts through neon billboards.'
+      ]
+    },
+    fantasy: {
+      style: 'ufotable_digital',
+      prompts: [
+        'Ancient dragon soaring above misty floating islands and crystal waterfalls at sunrise. A hooded dragon-rider with glowing runic staff navigates turbulent cloud canyons.',
+        'Enchanted elven forest cathedral bathed in celestial bioluminescence. Ancient sacred guardian spirit materializing with translucent wings of ethereal starlight.',
+        'Spellcaster unleashing a spiral vortex of elemental azure flames against an encroaching shadow colossus at the edge of an ancient crumbling fortress.'
+      ]
+    },
+    shinkai: {
+      style: 'shinkai_cinematic',
+      prompts: [
+        'Makoto Shinkai style emotional golden-hour sunset over rural railway crossing. Cherry blossom petals drifting in soft summer breeze, dramatic towering cumulonimbus clouds.',
+        'Glistening rain puddles reflecting twilight Tokyo skyline. Two high school students sharing a clear umbrella under gentle pastel rain showers with emotional atmospheric lighting.',
+        'Starry night sky over a tranquil mountain lake with a vibrant comet splitting into two glowing trails, reflecting across gentle ripples in breathtaking detail.'
+      ]
+    },
+    scifi: {
+      style: 'ufotable_digital',
+      prompts: [
+        'Epic deep-space orbital defense platform firing particle beams into a celestial nebula. Giant tactical mecha squadron launching into hyperspace with blazing thrusters.',
+        'Colossal interstellar colony ship arriving at a binary star system. Swarms of automated drones repairing planetary ring shields against cosmic solar flares.',
+        'High-tech humanoid scout exploring crystalline alien caverns on a distant moon, illuminating iridescent alien flora that pulse to harmonic acoustic resonance.'
+      ]
+    },
+    samurai: {
+      style: 'mappa_action',
+      prompts: [
+        'Autumn maple leaves falling in slow motion during a tense bamboo grove katana duel. Two master ronin standing motionless in the mist before an explosive split-second clash.',
+        'Moonlit castle rooftop confrontation in feudal Japan. Black-clad shinobi dodging shuriken under dramatic moonlight shadows with dynamic calligraphy-style motion lines.',
+        'Lone wandering swordswoman walking across wind-swept pampas grass under a stormy crimson dusk, hand resting calmly on the wrapped hilt of her ancestral nodachi.'
+      ]
+    },
+    ghibli: {
+      style: 'ghibli_classic',
+      prompts: [
+        'Studio Ghibli style whimsical flying machine soaring over emerald rolling hills and sleepy seaside villages. Fluffy white clouds and warm nostalgic afternoon sunlight.',
+        'Cozy woodland witch cottage surrounded by giant glowing mushrooms, moss-covered stone walls, and mischievous forest spirits gathering around a steaming brass cauldron.',
+        'Quaint vintage steam train traveling along submerged tracks over calm shallow turquoise ocean water, passengers looking out at distant lighthouse islands.'
+      ]
+    },
+    jagdhatri: {
+      style: 'ufotable_digital',
+      prompts: [
+        'Jagdhatri (Codename: JAS) enters the warehouse to recover classified intelligence. She detects an ambush and executes a defensive martial arts spin-kick disarming the first operative with razor-sharp focus.',
+        'Undercover agent JAS sprinting through crowded dockyards at dusk, executing acrobatic tactical maneuvers to evade hostile mercenaries while Jash provides long-range surveillance.',
+        'High-stakes intelligence exchange atop an abandoned grain elevator. JAS confronts syndicate leader in a fluid high-speed martial arts combat choreography.'
+      ]
+    },
+    shonen: {
+      style: 'mappa_action',
+      prompts: [
+        'High-octane anime tournament arena. Young warrior powering up glowing golden aura as shockwaves crack the bedrock, preparing an ultimate finishing strike with electric sparks.',
+        'Intense mountain cliff confrontation between rival fighters. Elemental energy spheres clashing in mid-air, causing shockwaves that shatter surrounding boulders.'
+      ]
+    }
+  };
+
+  function selectRandomThemePrompt(theme = null) {
+    const themes = Object.keys(UNIVERSAL_PROMPT_LIBRARY);
+    const chosenTheme = (theme && UNIVERSAL_PROMPT_LIBRARY[theme])
+      ? theme
+      : themes[Math.floor(Math.random() * themes.length)];
+
+    const themeData = UNIVERSAL_PROMPT_LIBRARY[chosenTheme];
+    const promptList = themeData.prompts;
+    const chosenPrompt = promptList[Math.floor(Math.random() * promptList.length)];
+
+    storyPromptInput.value = chosenPrompt;
+    if (themeData.style && animeStyleSelect) {
+      animeStyleSelect.value = themeData.style;
+    }
+
+    // Visual feedback
+    storyPromptInput.style.borderColor = '#10b981';
+    storyPromptInput.style.boxShadow = '0 0 12px rgba(16, 185, 129, 0.35)';
+    setTimeout(() => {
+      storyPromptInput.style.borderColor = '';
+      storyPromptInput.style.boxShadow = '';
+    }, 700);
+
+    return { theme: chosenTheme, prompt: chosenPrompt };
+  }
+
+  if (btnRandomPrompt) {
+    btnRandomPrompt.addEventListener('click', () => {
+      selectRandomThemePrompt();
+    });
+  }
+
+  if (btnSurpriseMe) {
+    btnSurpriseMe.addEventListener('click', () => {
+      selectRandomThemePrompt();
+      // Ensure at least 30s or 1 min is selected
+      const defaultDurationBtn = document.querySelector('.duration-btn[data-duration="0.5"]') || document.querySelector('.duration-btn[data-duration="1.0"]');
+      if (defaultDurationBtn) {
+        defaultDurationBtn.click();
+      }
+      setTimeout(() => {
+        generationForm.requestSubmit();
+      }, 250);
+    });
+  }
+
+  promptChips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const theme = chip.dataset.theme;
+      selectRandomThemePrompt(theme);
+      promptChips.forEach((c) => c.classList.remove('active'));
+      chip.classList.add('active');
+      setTimeout(() => chip.classList.remove('active'), 1200);
+    });
+  });
+
+  function formatDuration(sec) {
+    if (sec === null || sec === undefined || isNaN(sec)) return '—';
+    sec = Math.max(0, Math.round(sec));
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
 
   // ==================== VIDEO UPLOAD ====================
   uploadDropzone.addEventListener('click', () => videoFileInput.click());
@@ -477,6 +617,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==================== POLLING JOB STATUS ====================
   function startJobPolling(jobId) {
     if (pollInterval) clearInterval(pollInterval);
+    if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
+
+    jobStartTime = Date.now();
+    elapsedTimerInterval = setInterval(() => {
+      if (jobStartTime && telemetryElapsed) {
+        const elapsedSec = Math.floor((Date.now() - jobStartTime) / 1000);
+        telemetryElapsed.textContent = formatDuration(elapsedSec);
+      }
+    }, 1000);
 
     pollInterval = setInterval(async () => {
       try {
@@ -488,9 +637,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data.status === 'completed') {
           clearInterval(pollInterval);
+          if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
           handleJobCompleted(data);
         } else if (data.status === 'failed' || data.status === 'cancelled') {
           clearInterval(pollInterval);
+          if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
           handleJobTerminated(data);
         }
       } catch (err) {
@@ -505,6 +656,31 @@ document.addEventListener('DOMContentLoaded', () => {
     progressStage.textContent = data.stage_message || 'Processing scene chunks';
 
     fleetCountLabel.textContent = `${data.target_workers} Target Workers (${data.completed_chunks}/${data.total_chunks} Chunks Done)`;
+
+    // Update telemetry bar in real time
+    if (telemetryEta) {
+      if (data.status === 'completed') {
+        telemetryEta.textContent = 'Completed';
+      } else if (data.estimated_remaining_sec !== null && data.estimated_remaining_sec !== undefined) {
+        telemetryEta.textContent = `~${formatDuration(data.estimated_remaining_sec)}`;
+      } else {
+        telemetryEta.textContent = 'Calculating...';
+      }
+    }
+
+    if (telemetryElapsed && data.elapsed_sec !== undefined && data.elapsed_sec !== null) {
+      if (!jobStartTime || Math.abs((Date.now() - jobStartTime) / 1000 - data.elapsed_sec) > 3) {
+        jobStartTime = Date.now() - (data.elapsed_sec * 1000);
+      }
+      telemetryElapsed.textContent = formatDuration(data.elapsed_sec);
+    }
+
+    if (telemetryFleet) {
+      const activeCount = data.active_workers_count || 0;
+      telemetryFleet.textContent = activeCount > 0 
+        ? `${activeCount} Active / ${data.target_workers} Nodes`
+        : `${data.target_workers} Server Nodes`;
+    }
 
     renderWorkerGrid(data.chunks);
 
@@ -542,10 +718,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleJobCompleted(data) {
+    if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
     setGeneratingState(false);
     jobStateTag.textContent = 'Completed';
     jobStateTag.className = 'job-state-tag completed';
     progressStage.textContent = 'Final coherent video assembled!';
+    progressPercent.textContent = '100%';
+    progressBarFill.style.width = '100%';
+    if (telemetryEta) telemetryEta.textContent = 'Done';
 
     const videoUrl = `/api/v1/jobs/${data.job_id}/video`;
     videoSource.src = videoUrl;
@@ -558,6 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleJobTerminated(data) {
+    if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
     setGeneratingState(false);
     jobStateTag.textContent = data.status.toUpperCase();
     jobStateTag.className = 'job-state-tag';
@@ -570,7 +751,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await fetch(`/api/v1/jobs/${currentJobId}/cancel`, { method: 'POST' });
       jobStateTag.textContent = 'Cancelled';
-      clearInterval(pollInterval);
+      if (pollInterval) clearInterval(pollInterval);
+      if (elapsedTimerInterval) clearInterval(elapsedTimerInterval);
       setGeneratingState(false);
     } catch (err) {
       console.error('Cancel failed:', err);

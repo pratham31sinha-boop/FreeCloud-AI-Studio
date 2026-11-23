@@ -38,22 +38,15 @@ ALLOCATION_TABLE: List[Tuple[float, int]] = [
 def calculate_worker_allocation(duration_minutes: float) -> int:
     """Calculate target number of worker nodes for a given video duration in minutes.
 
-    Target allocation rules across all 10 duration stages:
-    - 1s - 5s: 1-2 workers
-    - 15s - 30s: 2-3 workers
-    - 1 min: 4 workers
+    Architecture requirement: Minimum 4 cloud servers pooled together to combine
+    computing power (each runner with 16GB RAM equivalent) for ultra-fast parallel rendering.
+    - 1s - 1 min: 4 workers minimum
     - 2 min: 5 workers
     - 3 min: 6 workers
     - 5 min: 7 workers
     - 10 min: 8 workers
     - 15 min: 10 workers
     """
-    if duration_minutes <= 0.05:
-        return 1
-    if duration_minutes <= 0.15:
-        return 2
-
-    # Preserves exact table match for standard minute tiers
     if duration_minutes <= 1.0:
         return 4
     if duration_minutes <= 2.0:
