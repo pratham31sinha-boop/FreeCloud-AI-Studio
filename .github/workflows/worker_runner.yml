@@ -16,6 +16,11 @@ on:
         description: "Base URL of FreeCloud AI Studio API (e.g., https://api.freecloud.ai or tunnel URL)"
         required: true
         type: string
+      duration_mins:
+        description: "Target video duration in minutes"
+        required: false
+        default: "1.0"
+        type: string
 
 permissions:
   contents: read
