@@ -29,15 +29,27 @@ def test_workflow_builder_structure():
 
 
 def test_comfyui_client_offline_simulation():
-    """Verify that ComfyUI client gracefully falls back to simulation mode when offline."""
+    """Verify that ComfyUI client fails by default when offline, and only simulates when explicitly enabled."""
     async def _run():
-        client = ComfyUIClient(host="127.0.0.1", port=65530)  # Unbound port
-        health = await client.check_health()
-        assert health["online"] is False
-        assert "simulation mode" in health["message"]
+        # 1. Default client (simulation_mode=False) must NOT report fake success
+        client_strict = ComfyUIClient(host="127.0.0.1", port=65530, simulation_mode=False)
+        health_strict = await client_strict.check_health()
+        assert health_strict["online"] is False
+        assert health_strict["simulation_mode"] is False
 
-        # Queue prompt should return simulated prompt id rather than crashing
-        res = await client.queue_prompt({"1": {"class_type": "EmptyLatentImage"}})
+        # Queue prompt must raise error when offline by default
+        try:
+            await client_strict.queue_prompt({"1": {"class_type": "EmptyLatentImage"}})
+            assert False, "Should have raised ComfyUIClientError"
+        except Exception as exc:
+            assert "Could not connect to ComfyUI" in str(exc)
+
+        # 2. Client with explicit simulation_mode=True
+        client_sim = ComfyUIClient(host="127.0.0.1", port=65530, simulation_mode=True)
+        health_sim = await client_sim.check_health()
+        assert health_sim["simulation_mode"] is True
+
+        res = await client_sim.queue_prompt({"1": {"class_type": "EmptyLatentImage"}})
         assert res.get("simulated") is True
         assert "mock_prompt_" in res.get("prompt_id")
 

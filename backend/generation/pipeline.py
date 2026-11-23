@@ -11,6 +11,8 @@ from typing import Any, Dict, Optional
 from backend.continuity.character_refs import character_ref_manager
 from backend.continuity.quality_check import quality_checker
 from backend.continuity.story_continuity import story_continuity_engine
+from backend.storage.manager import storage_manager
+from backend.storage.video_processor import video_processor
 from backend.workers.models import JobRecord, JobRequest
 from backend.workers.orchestrator import worker_orchestrator
 
@@ -42,6 +44,18 @@ class GenerationPipeline:
 
         # 3. Create job and dispatch workers via WorkerOrchestrator
         job_record = await worker_orchestrator.submit_job(request)
+
+        # 4. If source video uploaded, extract frames for chunk conditioning
+        if request.original_video_id:
+            src_video = storage_manager.uploads_dir / request.original_video_id
+            if src_video.is_file():
+                frames_dir = storage_manager.artifacts_dir / f"extracted_{job_record.job_id}"
+                try:
+                    video_processor.extract_frames(src_video, frames_dir, target_fps=12.0)
+                    logger.info("Extracted source video frames for job %s into %s", job_record.job_id, frames_dir)
+                except Exception as exc:
+                    logger.error("Failed extracting frames for job %s: %s", job_record.job_id, exc)
+
         return job_record
 
     def get_pipeline_status(self, job_id: str) -> Optional[Dict[str, Any]]:

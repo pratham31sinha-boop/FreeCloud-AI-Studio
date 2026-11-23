@@ -101,13 +101,20 @@ class StorageManager:
     def save_output_video(
         self,
         job_id: str,
-        video_bytes: bytes,
+        video_bytes_or_source_path: bytes | Path | str,
         filename: Optional[str] = None,
     ) -> Path:
         """Save the final stitched coherent video."""
         target_name = filename or f"{job_id}_final.mp4"
         output_path = self.outputs_dir / target_name
-        output_path.write_bytes(video_bytes)
+
+        if isinstance(video_bytes_or_source_path, (Path, str)):
+            src = Path(video_bytes_or_source_path)
+            if src.resolve() != output_path.resolve():
+                shutil.copy2(str(src), str(output_path))
+        else:
+            output_path.write_bytes(video_bytes_or_source_path)
+
         return output_path
 
     def get_output_video(self, job_id: str) -> Optional[Path]:

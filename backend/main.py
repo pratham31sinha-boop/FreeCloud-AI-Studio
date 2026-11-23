@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from backend.api import continuity_router, jobs_router, upload_router, workers_router
+from backend.api import comfyui_router, continuity_router, jobs_router, upload_router, workers_router
 from backend.config import settings
 from backend.storage.manager import storage_manager
 
@@ -47,6 +47,7 @@ app.include_router(jobs_router, prefix=api_v1_prefix)
 app.include_router(workers_router, prefix=api_v1_prefix)
 app.include_router(continuity_router, prefix=api_v1_prefix)
 app.include_router(upload_router, prefix=api_v1_prefix)
+app.include_router(comfyui_router, prefix=api_v1_prefix)
 
 
 @app.get("/health", tags=["Health"])

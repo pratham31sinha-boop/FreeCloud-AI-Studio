@@ -54,6 +54,10 @@ data/characters/*
 *.swp
 *.swo
 
+# Local server & logs
+comfyui_server/
+*.log
+
 # OS files
 .DS_Store
 Thumbs.db

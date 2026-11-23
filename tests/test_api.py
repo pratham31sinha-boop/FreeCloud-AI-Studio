@@ -32,6 +32,19 @@ def test_allocation_estimate_endpoint():
     assert len(data["table"]) == 6
 
 
+def test_comfyui_api_endpoints():
+    health_res = client.get("/api/v1/comfyui/health")
+    assert health_res.status_code == 200
+    health_data = health_res.json()
+    assert health_data["online"] is True
+
+    nodes_res = client.get("/api/v1/comfyui/nodes")
+    assert nodes_res.status_code == 200
+    nodes_data = nodes_res.json()
+    assert nodes_data["count"] > 100
+    assert "CreateVideo" in nodes_data["sample_nodes"] or len(nodes_data["sample_nodes"]) > 0
+
+
 def test_continuity_characters_endpoint():
     response = client.get("/api/v1/continuity/characters")
     assert response.status_code == 200
