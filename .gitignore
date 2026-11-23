@@ -37,6 +37,8 @@ venv.bak/
 .pytest_cache/
 .coverage
 htmlcov/
+*.tmp
+data/*.tmp
 
 # Application storage & media runtime files
 data/uploads/*
