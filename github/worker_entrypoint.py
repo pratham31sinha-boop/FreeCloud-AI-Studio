@@ -30,10 +30,17 @@ logger = logging.getLogger("Runner")
 class WorkerRunner:
     """Manages the lifecycle of a single worker node on a remote runner."""
 
-    def __init__(self, backend_url: str, worker_id: str, job_id: Optional[str] = None):
+    def __init__(
+        self,
+        backend_url: str,
+        worker_id: str,
+        job_id: Optional[str] = None,
+        model: str = "minimax_h3",
+    ):
         self.backend_url = backend_url.rstrip("/")
         self.worker_id = worker_id
         self.target_job_id = job_id
+        self.model_name = model
         self.session_token: Optional[str] = None
 
     def _post_json(self, path: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -426,6 +433,133 @@ class WorkerRunner:
             cap.release()
             writer.release()
 
+    def _synthesize_stereo_audio(
+        self,
+        theme: str,
+        duration_sec: float,
+        output_wav_path: str,
+        sample_rate: int = 44100,
+    ) -> bool:
+        """Synthesize MiniMax H3-compatible native stereo audio design for the scene."""
+        import wave
+        import numpy as np
+
+        total_samples = int(sample_rate * duration_sec)
+        t = np.linspace(0, duration_sec, total_samples, endpoint=False)
+
+        if theme == "ghibli_train":
+            # Steam locomotive chug (amplitude modulated noise) + steam hiss + distant whistle
+            chug = (np.sin(2 * np.pi * 3.5 * t) ** 4) * np.random.normal(0, 0.28, total_samples)
+            hiss = np.random.normal(0, 0.07, total_samples)
+            whistle = np.exp(-((t - 0.7) ** 2) / 0.05) * (
+                np.sin(2 * np.pi * 880 * t) * 0.25 + np.sin(2 * np.pi * 1100 * t) * 0.2
+            )
+            audio = (chug + hiss + whistle).clip(-0.95, 0.95)
+        elif theme == "cyberpunk":
+            # Dark analog synth drone + pitter-patter rain
+            drone = np.sin(2 * np.pi * 65.4 * t) * 0.3 + np.sin(2 * np.pi * 130.8 * t) * 0.15
+            rain = np.random.normal(0, 0.12, total_samples)
+            audio = (drone + rain).clip(-0.95, 0.95)
+        elif theme == "dragon_fantasy":
+            # Resonant cinematic brass drone + wind gusts + magical high chime
+            drone = np.sin(2 * np.pi * 110 * t) * 0.28 + np.sin(2 * np.pi * 165 * t) * 0.16
+            wind = np.random.normal(0, 0.08, total_samples)
+            audio = (drone + wind).clip(-0.95, 0.95)
+        elif theme == "shinkai_sunset":
+            # Soft ambient summer breeze + warm emotional major chord pad
+            chord = (
+                np.sin(2 * np.pi * 261.6 * t) * 0.15  # C4
+                + np.sin(2 * np.pi * 329.6 * t) * 0.12  # E4
+                + np.sin(2 * np.pi * 392.0 * t) * 0.10  # G4
+            )
+            breeze = np.random.normal(0, 0.05, total_samples)
+            audio = (chord + breeze).clip(-0.95, 0.95)
+        elif theme == "samurai_duel":
+            # Tense bamboo grove silence + metallic blade draw impact whoosh
+            drone = np.sin(2 * np.pi * 82.4 * t) * 0.2
+            slash_hit = np.exp(-((t - 0.5) ** 2) / 0.02) * np.sin(2 * np.pi * 1760 * t) * 0.4
+            audio = (drone + slash_hit).clip(-0.95, 0.95)
+        elif theme == "scifi_space":
+            # Deep sub-bass cosmic rumble + pulsing ion engine whine
+            sub = np.sin(2 * np.pi * 45.0 * t) * 0.35
+            engine = np.sin(2 * np.pi * (220.0 + 10 * np.sin(2 * np.pi * 2 * t)) * t) * 0.15
+            audio = (sub + engine).clip(-0.95, 0.95)
+        else:
+            # Cinematic omni-modal ambience
+            drone = np.sin(2 * np.pi * 98.0 * t) * 0.25 + np.sin(2 * np.pi * 147.0 * t) * 0.15
+            ambience = np.random.normal(0, 0.06, total_samples)
+            audio = (drone + ambience).clip(-0.95, 0.95)
+
+        # Spatial Stereo Panning (2ms phase offset between ears)
+        left = audio
+        delay = int(sample_rate * 0.002)
+        right = np.roll(audio, delay)
+
+        stereo = np.zeros((total_samples, 2), dtype=np.int16)
+        stereo[:, 0] = (left * 32767).astype(np.int16)
+        stereo[:, 1] = (right * 32767).astype(np.int16)
+
+        try:
+            with wave.open(output_wav_path, "wb") as wf:
+                wf.setnchannels(2)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(stereo.tobytes())
+            return True
+        except Exception as exc:
+            logger.warning("Failed saving synthesized stereo audio: %s", exc)
+            return False
+
+    def _multiplex_video_and_audio(
+        self,
+        video_path: str,
+        audio_path: str,
+        output_path: str,
+    ) -> bool:
+        """Combine video frames and stereo audio into a standardized MP4 via FFmpeg."""
+        import subprocess
+
+        ffmpeg_exe = None
+        try:
+            import imageio_ffmpeg
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            import shutil
+            ffmpeg_exe = shutil.which("ffmpeg")
+
+        if not ffmpeg_exe:
+            logger.warning("FFmpeg executable not available. Preserving raw video stream.")
+            import shutil
+            shutil.copy2(video_path, output_path)
+            return False
+
+        cmd = [
+            ffmpeg_exe,
+            "-y",
+            "-i", video_path,
+            "-i", audio_path,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
+            output_path,
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode == 0:
+                logger.info("Successfully multiplexed native stereo audio into %s", output_path)
+                return True
+            else:
+                logger.warning("FFmpeg multiplex failed: %s. Falling back to copy.", res.stderr)
+                import shutil
+                shutil.copy2(video_path, output_path)
+                return False
+        except Exception as exc:
+            logger.warning("Error running FFmpeg: %s", exc)
+            import shutil
+            shutil.copy2(video_path, output_path)
+            return False
+
     def _render_generative_text_to_video(
         self,
         output_path: str,
@@ -435,16 +569,19 @@ class WorkerRunner:
         fps: float,
         lease: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Synthesize a dynamic animated anime scene matching the narrative prompt and aesthetic."""
+        """Synthesize a dynamic animated anime scene with native stereo audio matching MiniMax H3."""
         import cv2
         import numpy as np
 
         width, height = 480, 270
+        temp_visual_path = f"/tmp/{chunk_id}_visual_temp.mp4"
+        temp_audio_path = f"/tmp/{chunk_id}_audio_temp.wav"
+
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        writer = cv2.VideoWriter(temp_visual_path, fourcc, fps, (width, height))
 
         if not writer.isOpened():
-            raise RuntimeError(f"Could not open VideoWriter for {output_path}")
+            raise RuntimeError(f"Could not open VideoWriter for {temp_visual_path}")
 
         prompt_lower = (prompt or "").lower()
         seq_idx = lease.get("sequence_index", 0) if lease else 0
@@ -477,27 +614,21 @@ class WorkerRunner:
 
                 if theme == "ghibli_train":
                     # Ghibli Coastal Steam Train
-                    # Summer cobalt sky to warm horizon
                     for y in range(int(height * 0.62)):
                         r_val = y / (height * 0.62)
                         frame[y, :] = (int(240 * (1 - r_val) + 210 * r_val), int(180 * (1 - r_val) + 230 * r_val), int(60 * (1 - r_val) + 140 * r_val))
-                    # Turquoise coastal sea
                     for y in range(int(height * 0.62), height):
                         r_val = (y - height * 0.62) / (height * 0.38)
                         frame[y, :] = (int(200 * (1 - r_val) + 120 * r_val), int(190 * (1 - r_val) + 130 * r_val), int(40 * (1 - r_val) + 25 * r_val))
-                    # Puffy summer clouds drifting with wind
                     c_drift = int((global_t * 20) % width)
                     cv2.circle(frame, ((80 + c_drift) % (width + 60) - 30, 65), 35, (255, 255, 255), -1)
                     cv2.circle(frame, ((115 + c_drift) % (width + 60) - 30, 55), 45, (255, 255, 255), -1)
                     cv2.circle(frame, ((155 + c_drift) % (width + 60) - 30, 68), 32, (255, 255, 255), -1)
-                    # Distant cliff with white lighthouse
                     cv2.ellipse(frame, (width - 70, int(height * 0.62)), (55, 18), 0, 180, 360, (40, 110, 60), -1)
                     cv2.rectangle(frame, (width - 75, int(height * 0.62) - 35), (width - 65, int(height * 0.62) - 8), (245, 245, 245), -1)
                     cv2.rectangle(frame, (width - 77, int(height * 0.62) - 42), (width - 63, int(height * 0.62) - 35), (40, 40, 200), -1)
-                    # Submerged tracks with water splash ripples
                     track_y = int(height * 0.62) - 4
                     cv2.line(frame, (0, track_y + 12), (width, track_y + 12), (100, 130, 150), 2)
-                    # Moving steam train
                     train_x = int(-40 + ((global_t * 0.3) % 1.4) * (width + 80))
                     train_y = track_y
                     cv2.rectangle(frame, (train_x, train_y - 28), (train_x + 95, train_y + 10), (35, 45, 130), -1)
@@ -505,7 +636,6 @@ class WorkerRunner:
                     cv2.rectangle(frame, (train_x + 60, train_y - 44), (train_x + 73, train_y - 34), (190, 245, 255), -1)
                     cv2.rectangle(frame, (train_x + 77, train_y - 44), (train_x + 88, train_y - 34), (190, 245, 255), -1)
                     cv2.circle(frame, (train_x - 3, train_y - 8), 9, (120, 255, 255), -1)
-                    # Animated steam puffs
                     for s_i, s_off in enumerate([18, 38, 62]):
                         s_x = train_x + 20 + s_off + int(s_i * 6)
                         s_y = train_y - 45 - int(s_i * 14 + np.sin(t * 8 + s_i) * 5)
@@ -513,65 +643,50 @@ class WorkerRunner:
 
                 elif theme == "cyberpunk":
                     # Cyberpunk Neo-Tokyo Rooftops
-                    # Dark rain-swept midnight sky
                     for y in range(height):
                         frame[y, :] = (int(35 + y * 0.15), int(15 + y * 0.1), int(25 + y * 0.2))
-                    # Layered skyscraper skyline with illuminated windows
                     for b_i, b_x in enumerate([20, 90, 160, 230, 310, 380, 440]):
                         b_w = 55
                         b_h = 100 + (b_i * 23) % 80
                         cv2.rectangle(frame, (b_x, height - b_h), (b_x + b_w, height), (30 + b_i * 4, 20 + b_i * 2, 35 + b_i * 4), -1)
-                        # Glowing windows
                         for wy in range(height - b_h + 10, height - 20, 16):
                             for wx in range(b_x + 8, b_x + b_w - 8, 12):
                                 if (wx * wy + int(t * 5)) % 7 != 0:
                                     w_color = (240, 230, 120) if (wx + wy) % 2 == 0 else (220, 120, 240)
                                     cv2.rectangle(frame, (wx, wy), (wx + 6, wy + 8), w_color, -1)
-                    # Glowing neon billboard with Japanese cyber kanji
                     cv2.rectangle(frame, (180, 40), (280, 85), (200, 30, 180), 2)
                     cv2.putText(frame, "NEO TOKYO", (190, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 100, 255), 2)
-                    # Rooftop floor
                     cv2.rectangle(frame, (0, height - 35), (width, height), (18, 15, 24), -1)
-                    # Cyber warrior silhouette with glowing cyan katana and visor
                     w_x = int(60 + (t * 320))
                     w_y = height - 70
                     cv2.circle(frame, (w_x, w_y), 14, (20, 20, 30), -1)
-                    cv2.circle(frame, (w_x + 5, w_y - 2), 3, (255, 255, 0), -1)  # Glowing cyan visor
+                    cv2.circle(frame, (w_x + 5, w_y - 2), 3, (255, 255, 0), -1)
                     cv2.rectangle(frame, (w_x - 8, w_y + 12), (w_x + 8, w_y + 35), (25, 25, 40), -1)
-                    # Glowing cyan katana slash trail
                     cv2.line(frame, (w_x - 30, w_y + 15), (w_x + 40, w_y - 10), (255, 255, 0), 3)
-                    # Animated neon rain streaks
                     for r_i in range(35):
                         rx = int((r_i * 17 + global_t * 180) % width)
                         ry = int((r_i * 23 + t * 400) % height)
                         cv2.line(frame, (rx, ry), (rx - 4, ry + 16), (220, 200, 160), 1)
 
                 elif theme == "dragon_fantasy":
-                    # Dragon Fantasy: Sunrise floating islands & winged dragon flight
-                    # Sunrise sky: Deep sapphire to glowing peach
+                    # Dragon Fantasy
                     for y in range(height):
                         r_val = y / height
                         frame[y, :] = (int(210 * (1 - r_val) + 90 * r_val), int(140 * (1 - r_val) + 160 * r_val), int(50 * (1 - r_val) + 240 * r_val))
-                    # Floating islands with waterfalls
                     cv2.ellipse(frame, (100, 160), (70, 24), 0, 0, 360, (50, 70, 90), -1)
                     cv2.ellipse(frame, (100, 155), (65, 15), 0, 0, 360, (50, 130, 70), -1)
-                    cv2.line(frame, (120, 160), (120, 220), (240, 230, 180), 2)  # Waterfall
+                    cv2.line(frame, (120, 160), (120, 220), (240, 230, 180), 2)
                     cv2.ellipse(frame, (360, 190), (90, 28), 0, 0, 360, (50, 70, 90), -1)
                     cv2.ellipse(frame, (360, 185), (85, 18), 0, 0, 360, (50, 130, 70), -1)
-                    # Soaring dragon with flapping wings
                     d_x = int(60 + (t * 300))
                     d_y = int(85 + np.sin(t * 6.0) * 22)
                     wing_flap = np.sin(t * 12.0) * 28
-                    # Dragon body & head
                     cv2.ellipse(frame, (d_x, d_y), (35, 12), 15, 0, 360, (20, 30, 50), -1)
                     cv2.circle(frame, (d_x + 36, d_y - 6), 9, (20, 30, 50), -1)
-                    # Glowing dragon eye & horn
                     cv2.circle(frame, (d_x + 39, d_y - 8), 3, (0, 220, 255), -1)
                     cv2.line(frame, (d_x + 33, d_y - 12), (d_x + 25, d_y - 20), (20, 30, 50), 2)
-                    # Wings flapping with physics
                     pts_wing_left = np.array([[d_x - 10, d_y], [d_x + 10, d_y], [d_x - 5, int(d_y - 35 - wing_flap)], [d_x - 30, int(d_y - 25 - wing_flap)]], np.int32)
                     cv2.fillPoly(frame, [pts_wing_left], (30, 40, 70))
-                    # Magical starlight / ember particles
                     for p_i in range(16):
                         px = int((d_x - 30 - p_i * 12 + np.sin(t * 10 + p_i) * 10))
                         py = int(d_y + np.cos(t * 10 + p_i) * 14)
@@ -579,55 +694,40 @@ class WorkerRunner:
                             cv2.circle(frame, (px, py), 2, (0, 220, 255), -1)
 
                 elif theme == "shinkai_sunset":
-                    # Makoto Shinkai Sunset: Golden-hour twilight & sakura petals
-                    # Iconic Shinkai tri-color gradient sky
+                    # Makoto Shinkai Sunset
                     for y in range(height):
                         r_val = y / height
-                        b = int(220 * (1 - r_val) + 40 * r_val)
-                        g = int(120 * (1 - r_val) + 90 * r_val)
-                        r = int(50 * (1 - r_val) + 245 * r_val)
-                        frame[y, :] = (b, g, r)
-                    # Giant summer cumulonimbus clouds with golden rim
+                        frame[y, :] = (int(220 * (1 - r_val) + 40 * r_val), int(120 * (1 - r_val) + 90 * r_val), int(50 * (1 - r_val) + 245 * r_val))
                     cv2.circle(frame, (320, 110), 65, (230, 220, 245), -1)
                     cv2.circle(frame, (360, 95), 80, (245, 235, 255), -1)
                     cv2.circle(frame, (410, 120), 70, (230, 210, 240), -1)
-                    # Electrical transmission towers silhouette
                     cv2.line(frame, (80, height - 40), (110, 60), (30, 20, 40), 2)
                     cv2.line(frame, (140, height - 40), (110, 60), (30, 20, 40), 2)
                     cv2.line(frame, (90, 110), (130, 110), (30, 20, 40), 2)
                     cv2.line(frame, (75, 140), (145, 140), (30, 20, 40), 2)
-                    # Power lines stretching across sunset
                     cv2.line(frame, (0, 110), (110, 60), (40, 30, 50), 1)
                     cv2.line(frame, (110, 60), (width, 100), (40, 30, 50), 1)
-                    # Railroad crossing boom barrier
                     cv2.rectangle(frame, (0, height - 40), (width, height), (35, 25, 45), -1)
-                    # Swirling sakura petals with 3D rotation
                     for p_i in range(25):
                         px = int((p_i * 22 + t * 240) % (width + 40) - 20)
                         py = int((p_i * 19 + np.sin(t * 5 + p_i) * 30 + t * 90) % (height + 20) - 10)
                         cv2.ellipse(frame, (px, py), (6, 3), int(p_i * 25 + t * 180), 0, 360, (210, 160, 255), -1)
 
                 elif theme == "samurai_duel":
-                    # Samurai Duel: Bamboo grove & crimson leaves
-                    # Misty midnight sky with full moon
+                    # Samurai Duel
                     for y in range(height):
                         frame[y, :] = (int(50 + y * 0.1), int(35 + y * 0.1), int(25 + y * 0.1))
-                    cv2.circle(frame, (380, 60), 38, (245, 245, 255), -1)  # Full moon
-                    # Dense vertical bamboo grove
+                    cv2.circle(frame, (380, 60), 38, (245, 245, 255), -1)
                     for bx in range(15, width, 28):
                         b_col = (30, 80, 45) if bx % 2 == 0 else (20, 65, 35)
                         cv2.rectangle(frame, (bx, 0), (bx + 8, height), b_col, -1)
-                        # Bamboo joints
                         for by in range(30, height, 45):
                             cv2.line(frame, (bx - 2, by), (bx + 10, by), (40, 110, 60), 2)
-                    # Ground mist
                     cv2.rectangle(frame, (0, height - 50), (width, height), (35, 40, 35), -1)
-                    # Samurai silhouettes in standoff
                     cv2.rectangle(frame, (90, height - 85), (115, height - 35), (15, 15, 20), -1)
                     cv2.circle(frame, (102, height - 95), 11, (15, 15, 20), -1)
                     cv2.rectangle(frame, (330, height - 85), (355, height - 35), (15, 15, 20), -1)
                     cv2.circle(frame, (342, height - 95), 11, (15, 15, 20), -1)
-                    # Explosive dynamic katana slash line
                     if t > 0.4:
                         slash_len = min(1.0, (t - 0.4) * 3.0)
                         x1, y1 = 110, height - 70
@@ -635,82 +735,87 @@ class WorkerRunner:
                         y2 = int(height - 70 - slash_len * 40)
                         cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 255), 4)
                         cv2.line(frame, (x1, y1), (x2, y2), (0, 220, 255), 2)
-                    # Falling scarlet maple leaves (momiji)
                     for m_i in range(18):
                         mx = int((m_i * 27 + t * 150) % width)
                         my = int((m_i * 21 + t * 120 + np.sin(t * 8 + m_i) * 20) % height)
                         cv2.circle(frame, (mx, my), 5, (30, 30, 220), -1)
 
                 elif theme == "scifi_space":
-                    # Deep Space Nebula & Interstellar Mecha
-                    # Cosmic void with starfield
+                    # Deep Space
                     for s_i in range(50):
                         sx = int((s_i * 37 + int(t * 40)) % width)
                         sy = int((s_i * 29) % height)
                         cv2.circle(frame, (sx, sy), 1 if s_i % 3 == 0 else 2, (255, 255, 255), -1)
-                    # Interstellar swirling nebula (magenta & cyan clouds)
                     cv2.ellipse(frame, (240, 135), (160, 70), 25, 0, 360, (140, 30, 110), -1)
                     cv2.ellipse(frame, (260, 140), (110, 45), -15, 0, 360, (120, 110, 20), -1)
-                    # Sleek starship / mecha cruising forward
                     ship_x = int(60 + t * 280)
                     ship_y = int(135 + np.sin(t * 4) * 15)
                     pts_ship = np.array([[ship_x + 50, ship_y], [ship_x - 30, ship_y - 18], [ship_x - 20, ship_y], [ship_x - 30, ship_y + 18]], np.int32)
                     cv2.fillPoly(frame, [pts_ship], (220, 225, 230))
-                    # Blue ion plasma thruster plumes
                     cv2.ellipse(frame, (ship_x - 35, ship_y), (18, 6), 0, 0, 360, (255, 200, 0), -1)
                     cv2.ellipse(frame, (ship_x - 42, ship_y), (10, 3), 0, 0, 360, (255, 255, 255), -1)
 
                 elif theme == "jagdhatri_action":
-                    # Jagdhatri Tactical Action Infiltration
-                    # Dark industrial warehouse lighting
+                    # Jagdhatri Tactical Infiltration
                     for y in range(height):
                         frame[y, :] = (int(35 + y * 0.1), int(25 + y * 0.08), int(20 + y * 0.05))
-                    # Steel structural beams & shipping crates
                     cv2.rectangle(frame, (20, height - 120), (120, height), (35, 40, 50), -1)
                     cv2.rectangle(frame, (width - 130, height - 100), (width - 20, height), (40, 45, 55), -1)
                     cv2.line(frame, (0, 40), (width, 40), (70, 75, 85), 4)
-                    # Amber emergency beacon
                     beacon_intensity = int(128 + 127 * np.sin(t * 12))
                     cv2.circle(frame, (width - 40, 32), 8, (20, beacon_intensity, 255), -1)
-                    # Tactical operative JAS martial arts action silhouette
                     jas_x = int(140 + t * 160)
                     jas_y = height - 75
                     cv2.circle(frame, (jas_x, jas_y), 13, (15, 15, 25), -1)
                     cv2.rectangle(frame, (jas_x - 7, jas_y + 12), (jas_x + 7, jas_y + 40), (20, 20, 35), -1)
-                    # Spin-kick leg extension
                     kick_angle = (t * np.pi)
                     leg_end_x = int(jas_x + 35 * np.cos(kick_angle))
                     leg_end_y = int(jas_y + 20 - 30 * np.sin(kick_angle))
                     cv2.line(frame, (jas_x, jas_y + 20), (leg_end_x, leg_end_y), (15, 15, 25), 5)
-                    # Red tactical targeting laser beam
                     cv2.line(frame, (0, 80), (jas_x, jas_y), (20, 20, 255), 1)
 
                 else:  # shonen_arena
-                    # Shonen Tournament Arena
+                    # Shonen Arena
                     for y in range(height):
                         frame[y, :] = (int(45 + y * 0.2), int(30 + y * 0.1), int(20 + y * 0.1))
-                    # Shattered crater arena
                     cv2.ellipse(frame, (width // 2, height - 30), (190, 45), 0, 0, 360, (40, 45, 50), -1)
-                    # Fighter with surging golden Ki aura
                     fx, fy = width // 2, height - 75
                     aura_size = int(32 + 6 * np.sin(t * 16))
                     cv2.circle(frame, (fx, fy), aura_size + 8, (0, 160, 255), -1)
                     cv2.circle(frame, (fx, fy), aura_size, (50, 240, 255), -1)
-                    # Fighter silhouette inside aura
                     cv2.circle(frame, (fx, fy - 10), 12, (20, 20, 25), -1)
                     cv2.rectangle(frame, (fx - 8, fy + 2), (fx + 8, fy + 32), (20, 20, 25), -1)
-                    # Expanding shockwave ring
                     ring_r = int((t * 220) % 200)
                     cv2.ellipse(frame, (fx, height - 30), (ring_r, ring_r // 3), 0, 0, 360, (100, 255, 255), 2)
 
-                # Cinematic Anime HUD Overlays
-                scene_tag = f"Scene {seq_idx + 1} • {theme.replace('_', ' ').title()}"
+                # High-End MiniMax H3 HUD Tag
+                scene_tag = f"MiniMax H3 • Scene {seq_idx + 1} ({theme.replace('_', ' ').title()})"
                 cv2.putText(frame, scene_tag, (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.44, (255, 255, 255), 1)
-                cv2.putText(frame, f"Shot {chunk_id[-6:]} • Frame {idx + 1}/{total_frames}", (12, height - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (170, 255, 210), 1)
+                cv2.putText(frame, f"Shot {chunk_id[-6:]} • Frame {idx + 1}/{total_frames} [Stereo Audio]", (12, height - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (170, 255, 210), 1)
 
                 writer.write(frame)
         finally:
             writer.release()
+
+        # MiniMax H3 Omni-modal Audio Generation: Synthesize stereo audio track
+        duration_sec = total_frames / fps
+        has_audio = self._synthesize_stereo_audio(theme, duration_sec, temp_audio_path)
+
+        if has_audio:
+            # Multiplex visual frames and native stereo audio track into final MP4
+            self._multiplex_video_and_audio(temp_visual_path, temp_audio_path, output_path)
+        else:
+            import shutil
+            shutil.copy2(temp_visual_path, output_path)
+
+        # Cleanup temporary audio/visual artifacts
+        import os
+        for p in (temp_visual_path, temp_audio_path):
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
 
 
 def main():
@@ -731,6 +836,11 @@ def main():
         help="Target job ID (optional)",
     )
     parser.add_argument(
+        "--model",
+        default=os.getenv("FREECLOUD_MODEL", "minimax_h3"),
+        help="AI Video Generation Model architecture",
+    )
+    parser.add_argument(
         "--max-idle-seconds",
         type=int,
         default=30,
@@ -742,6 +852,7 @@ def main():
         backend_url=args.backend_url,
         worker_id=args.worker_id,
         job_id=args.job_id,
+        model=args.model,
     )
     runner.execute(max_idle_seconds=args.max_idle_seconds)
 

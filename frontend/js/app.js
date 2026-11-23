@@ -194,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   jagdhatriPresetBtn.addEventListener('click', () => {
     storyPromptInput.value = JAGDHATRI_STORY_PROMPT;
-    animeStyleSelect.value = 'ufotable_digital';
+    animeStyleSelect.value = 'minimax_h3_cinematic';
 
     jagdhatriPresetBtn.style.borderColor = '#10b981';
     setTimeout(() => {

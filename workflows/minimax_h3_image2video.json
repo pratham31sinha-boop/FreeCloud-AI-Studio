@@ -1,0 +1,174 @@
+{
+  "client_id": "freecloud_minimax",
+  "prompt": {
+    "1": {
+      "class_type": "MiniMaxModelLoader",
+      "inputs": {
+        "model_name": "minimax_h3_pruned_int8.safetensors",
+        "precision": "int8",
+        "device": "auto",
+        "cpu_offload": true
+      }
+    },
+    "2": {
+      "class_type": "DualCLIPLoader",
+      "inputs": {
+        "clip_name1": "qwen3vl_32b_minimax_h3.safetensors",
+        "clip_name2": "qwen3vl_32b_minimax_h3.safetensors",
+        "type": "qwen_vl"
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "Animate character performing dynamic martial arts spin kick, cinematic camera tracking, 4k ultra-high definition, cinematic lighting, fluid motion, masterwork",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "4": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "Martial arts uniform rustle and dramatic impact boom",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "bad quality, blurry, distorted anatomy, jittery motion",
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "6": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_video_vae.safetensors"
+      }
+    },
+    "7": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "minimax_h3_audio_vae.safetensors"
+      }
+    },
+    "8": {
+      "class_type": "EmptyMiniMaxLatent",
+      "inputs": {
+        "width": 768,
+        "height": 768,
+        "length": 72,
+        "batch_size": 1
+      }
+    },
+    "9": {
+      "class_type": "MiniMaxSampler",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "positive_video": [
+          "3",
+          0
+        ],
+        "positive_audio": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ],
+        "latent": [
+          "14",
+          0
+        ],
+        "seed": 34896788,
+        "steps": 25,
+        "cfg": 6.5,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "karras",
+        "denoise": 1.0,
+        "low_vram_tiling": true
+      }
+    },
+    "10": {
+      "class_type": "VAEDecodeTiled",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "6",
+          0
+        ],
+        "tile_size": 256
+      }
+    },
+    "11": {
+      "class_type": "MiniMaxAudioDecode",
+      "inputs": {
+        "samples": [
+          "9",
+          1
+        ],
+        "vae": [
+          "7",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "VHS_VideoCombine",
+      "inputs": {
+        "images": [
+          "10",
+          0
+        ],
+        "audio": [
+          "11",
+          0
+        ],
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "minimax_h3_i2v",
+        "format": "video/h264-mp4",
+        "pingpong": false,
+        "save_output": true
+      }
+    },
+    "13": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "input/jagdhatri_keyframe.png"
+      }
+    },
+    "14": {
+      "class_type": "MiniMaxImageEncode",
+      "inputs": {
+        "image": [
+          "13",
+          0
+        ],
+        "vae": [
+          "6",
+          0
+        ],
+        "latent": [
+          "8",
+          0
+        ]
+      }
+    }
+  }
+}

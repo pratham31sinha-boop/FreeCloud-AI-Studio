@@ -111,6 +111,42 @@ class ModelRegistry:
                 installed=False,
                 description="Zero-shot character voice cloning preserving Indian serial vocal intonations.",
             ),
+            ModelSpec(
+                model_id="minimax_h3_video",
+                name="MiniMax H3 Omni-Modal Video Generator (Low VRAM 8GB/16GB)",
+                category=ModelCategory.VIDEO_GENERATION,
+                provider="MiniMax / Comfy-Org",
+                version="H3-INT8-ConvRot",
+                vram_minimum_gb=8,
+                comfyui_compatible=True,
+                installed=False,
+                download_url="https://huggingface.co/Comfy-Org/MiniMax-H3",
+                description="High-end open-weights omni-modal video generator with native stereo audio and low-VRAM tiled VAE execution.",
+                parameters={
+                    "quantization": "int8_convrot / pruned_w4a8",
+                    "text_encoder": "qwen3vl_32b_minimax_h3",
+                    "video_vae": "minimax_h3_video_vae",
+                    "audio_vae": "minimax_h3_audio_vae",
+                    "native_audio": "true",
+                    "modes": "Text-to-Video (T2V), Image-to-Video (I2V), Reference-to-Video (R2V)",
+                },
+            ),
+            ModelSpec(
+                model_id="minimax_h3_image",
+                name="MiniMax H3 Image & Keyframe Conditioning",
+                category=ModelCategory.CHARACTER_ENCODER,
+                provider="MiniMax / Comfy-Org",
+                version="H3-Image-W4A8",
+                vram_minimum_gb=8,
+                comfyui_compatible=True,
+                installed=False,
+                download_url="https://huggingface.co/Comfy-Org/MiniMax-H3-Image",
+                description="High-end image editing, character face swapping, and first/last keyframe conditioning for video sequences.",
+                parameters={
+                    "quantization": "pruned_w4a8",
+                    "modes": "Keyframe conditioning, Character swap, Image editing",
+                },
+            ),
         ]
         for spec in defaults:
             self.register(spec)

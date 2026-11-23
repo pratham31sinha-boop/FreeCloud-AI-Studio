@@ -21,6 +21,11 @@ on:
         required: false
         default: "1.0"
         type: string
+      model_name:
+        description: "AI Video Generation Model (e.g. minimax_h3, animatediff)"
+        required: false
+        default: "minimax_h3"
+        type: string
 
 permissions:
   contents: read
@@ -65,7 +70,7 @@ jobs:
         if: steps.check_active.outputs.active == 'true'
         run: |
           python -m pip install --upgrade pip
-          pip install httpx pydantic requests opencv-python-headless numpy
+          pip install httpx pydantic requests opencv-python-headless numpy imageio-ffmpeg
 
       - name: Execute Worker Runner Entrypoint
         if: steps.check_active.outputs.active == 'true'
@@ -78,4 +83,5 @@ jobs:
             --backend-url "$FREECLOUD_BACKEND_URL" \
             --job-id "$FREECLOUD_JOB_ID" \
             --worker-id "$WORKER_ID" \
+            --model "${{ inputs.model_name }}" \
             --max-idle-seconds 45

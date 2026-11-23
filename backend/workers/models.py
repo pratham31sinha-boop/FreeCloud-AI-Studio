@@ -43,6 +43,8 @@ class AnimeStyle(str, Enum):
     UFOTABLE_DIGITAL = "ufotable_digital"
     GHIBLI_CLASSIC = "ghibli_classic"
     KYOANI_SOFT = "kyoani_soft"
+    MINIMAX_H3_CINEMATIC = "minimax_h3_cinematic"
+    MINIMAX_H3_ANIME = "minimax_h3_anime"
 
 
 class TaskChunk(BaseModel):

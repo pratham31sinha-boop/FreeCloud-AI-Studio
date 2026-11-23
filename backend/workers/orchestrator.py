@@ -110,7 +110,10 @@ class WorkerOrchestrator:
         dispatch_result = await self.dispatcher.dispatch_workers(
             job_id=job_id,
             worker_count=target_workers,
-            extra_inputs={"duration_mins": str(request.duration_minutes)},
+            extra_inputs={
+                "duration_mins": str(request.duration_minutes),
+                "model_name": "minimax_h3",
+            },
         )
         logger.info("Job %s worker dispatch response: %s", job_id, dispatch_result)
 
