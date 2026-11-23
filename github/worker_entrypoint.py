@@ -736,6 +736,10 @@ class WorkerRunner:
                 if breathe != 1.0:
                     frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
 
+                # Cinematic anamorphic widescreen letterboxing (clean 2.35:1 Hollywood ratio)
+                frame[:20, :] = 0
+                frame[-22:, :] = 0
+
                 writer.write(frame)
         finally:
             writer.release()
