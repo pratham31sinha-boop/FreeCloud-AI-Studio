@@ -59,9 +59,11 @@ class WorkerOrchestrator:
     def _save_jobs_to_disk(self) -> None:
         try:
             p = settings.data_dir / "jobs_registry.json"
+            tmp_p = settings.data_dir / "jobs_registry.json.tmp"
             data = {jid: j.model_dump() for jid, j in self.jobs.items()}
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump(data, f, default=str)
+            with open(tmp_p, "w", encoding="utf-8") as f:
+                json.dump(data, f, default=str, indent=2)
+            tmp_p.replace(p)
         except Exception as exc:
             logger.debug("Failed saving jobs registry: %s", exc)
 
