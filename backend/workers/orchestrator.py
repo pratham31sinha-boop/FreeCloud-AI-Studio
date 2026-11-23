@@ -54,6 +54,28 @@ class WorkerOrchestrator:
             self.dispatcher = GitHubActionsDispatcher()
         else:
             self.dispatcher = LocalWorkerDispatcher()
+        self._load_jobs_from_disk()
+
+    def _save_jobs_to_disk(self) -> None:
+        try:
+            p = settings.data_dir / "jobs_registry.json"
+            data = {jid: j.model_dump() for jid, j in self.jobs.items()}
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(data, f, default=str)
+        except Exception as exc:
+            logger.debug("Failed saving jobs registry: %s", exc)
+
+    def _load_jobs_from_disk(self) -> None:
+        try:
+            p = settings.data_dir / "jobs_registry.json"
+            if p.is_file():
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for jid, jdict in data.items():
+                    self.jobs[jid] = JobRecord(**jdict)
+                logger.info("Restored %d jobs from registry cache", len(self.jobs))
+        except Exception as exc:
+            logger.debug("Failed loading jobs registry: %s", exc)
 
     async def submit_job(self, request: JobRequest) -> JobRecord:
         """Create and queue a new generation job with distributed chunks."""
@@ -88,6 +110,7 @@ class WorkerOrchestrator:
         record.status = JobStatus.RENDERING
         record.stage_message = "Workers rendering scene chunks"
         record.updated_at = time.time()
+        self._save_jobs_to_disk()
         return record
 
     def register_worker(self, req: WorkerRegisterRequest) -> WorkerRegisterResponse:
@@ -182,6 +205,7 @@ class WorkerOrchestrator:
                         motion_guidance={
                             "tracking_enabled": job.request.continuity_motion_tracking,
                             "motion_reference_id": chunk.motion_reference_id,
+                            "original_video_id": job.request.original_video_id,
                         },
                         lease_expires_at=chunk.lease_expires_at,
                         artifact_upload_url=f"/api/v1/workers/{worker_id}/chunks/{chunk.chunk_id}/artifact",
@@ -232,6 +256,7 @@ class WorkerOrchestrator:
         if job.completed_chunks == job.total_chunks:
             self._assemble_final_video(job)
 
+        self._save_jobs_to_disk()
         return True
 
     def report_chunk_failure(self, req: ChunkFailureRequest) -> bool:
@@ -395,6 +420,7 @@ class WorkerOrchestrator:
             if chunk.status != TaskChunkStatus.COMPLETED:
                 chunk.status = TaskChunkStatus.FAILED
                 chunk.error_message = "Cancelled"
+        self._save_jobs_to_disk()
         return True
 
 

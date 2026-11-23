@@ -49,6 +49,7 @@ data/characters/*
 !data/characters/.gitkeep
 data/analysis/**
 !data/analysis/.gitkeep
+data/jobs_registry.json
 
 # IDEs
 .vscode/

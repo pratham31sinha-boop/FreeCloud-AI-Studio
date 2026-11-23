@@ -32,16 +32,16 @@ class Settings(BaseModel):
 
     # Worker Orchestration (GitHub Actions & Local)
     github_actions_enabled: bool = Field(
-        default=os.getenv("GITHUB_ACTIONS_ENABLED", "false").lower() == "true"
+        default=os.getenv("GITHUB_ACTIONS_ENABLED", "true").lower() == "true"
     )
     github_repository: str = Field(
-        default=os.getenv("GITHUB_REPOSITORY", "owner/FreeCloud-AI-Studio")
+        default=os.getenv("GITHUB_REPOSITORY", "pratham31sinha-boop/FreeCloud-AI-Studio")
     )
     github_workflow_id: str = Field(
         default=os.getenv("GITHUB_WORKFLOW_ID", "worker_runner.yml")
     )
     github_pat_token: str = Field(
-        default=os.getenv("GITHUB_PAT_TOKEN", "")
+        default_factory=lambda: os.getenv("GITHUB_PAT_TOKEN", "")
     )
     worker_heartbeat_timeout_sec: int = Field(default=120)
     worker_task_lease_sec: int = Field(default=300)

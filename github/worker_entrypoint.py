@@ -200,6 +200,7 @@ class WorkerRunner:
                 prompt=lease.get("prompt_segment", "Anime Scene"),
                 total_frames=total_frames,
                 fps=target_fps,
+                lease=lease,
             )
 
             # Compute real SHA-256 of the generated video
@@ -255,12 +256,68 @@ class WorkerRunner:
                 logger.error("Failed to report failure to backend: %s", report_err)
 
     def _render_real_mp4_video(
-        self, output_path: str, chunk_id: str, prompt: str, total_frames: int, fps: float
+        self,
+        output_path: str,
+        chunk_id: str,
+        prompt: str,
+        total_frames: int,
+        fps: float,
+        lease: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Synthesize real anime-styled frames and encode a genuine ISO MP4 container."""
         import cv2
         import numpy as np
+        from pathlib import Path
 
+        # Check if an original uploaded video exists
+        src_video_path = None
+        if lease:
+            orig_vid_id = lease.get("motion_guidance", {}).get("original_video_id")
+            if orig_vid_id:
+                candidate = Path("/home/prathamsinha/.gemini/antigravity/scratch/FreeCloud-AI-Studio/data/uploads") / orig_vid_id
+                if candidate.is_file() and candidate.stat().st_size > 1000:
+                    src_video_path = candidate
+
+        # If source video is found, extract frames from this chunk's time slice and apply anime cel-shading
+        if src_video_path:
+            logger.info("Restyling source video %s for chunk %s", src_video_path.name, chunk_id)
+            from backend.storage.video_processor import video_processor
+
+            cap = cv2.VideoCapture(str(src_video_path))
+            src_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            start_sec = lease.get("start_sec", 0.0) if lease else 0.0
+            start_frame = int(start_sec * src_fps)
+
+            width, height = 480, 270
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+            try:
+                for idx in range(total_frames):
+                    ret, raw_frame = cap.read()
+                    if not ret:
+                        # loop back or break
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, raw_frame = cap.read()
+                        if not ret:
+                            break
+
+                    resized = cv2.resize(raw_frame, (width, height))
+                    # Apply anime stylization (cel-shading bilateral filter, adaptive edge lineart, boosted HSV)
+                    anime_frame = video_processor.apply_anime_stylization_to_frame(
+                        resized, line_weight=1.2, color_boost=1.35
+                    )
+                    # Overlay anime HUD
+                    cv2.putText(anime_frame, f"FC Anime: Jagdhatri Ep 224", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+                    cv2.putText(anime_frame, f"Shot {chunk_id[-6:]} | Frame {idx + 1}/{total_frames}", (10, height - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (150, 255, 200), 1)
+                    writer.write(anime_frame)
+            finally:
+                cap.release()
+                writer.release()
+            return
+
+        # Fallback: Procedural anime dusk sky and silhouette action animation
         width, height = 320, 240
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
