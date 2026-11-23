@@ -98,7 +98,7 @@ class JobRequest(BaseModel):
         ..., min_length=5, description="Scene narrative or Jagdhatri scene script"
     )
     duration_minutes: float = Field(
-        default=1.0, ge=0.2, le=15.0, description="Target output duration in minutes"
+        default=1.0, ge=0.01, le=15.0, description="Target output duration in minutes"
     )
     anime_style: AnimeStyle = AnimeStyle.SHINKAI_CINEMATIC
     character_ids: List[str] = Field(

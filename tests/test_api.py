@@ -127,3 +127,22 @@ def test_job_submission_and_worker_workflow():
     assert status_res.status_code == 200
     status_data = status_res.json()
     assert status_data["completed_chunks"] >= 1
+
+
+def test_video_analysis_endpoint():
+    # Test sample endpoint with 6s duration for fast test execution
+    res = client.get("/api/v1/analysis/jagdhatri-sample?max_duration_sec=6.0")
+    assert res.status_code == 200
+    report = res.json()
+    assert "video_path" in report
+    assert report["total_frames"] > 0
+    assert len(report["scenes"]) > 0
+    assert report["scenes"][0]["camera_movement"] in [
+        "static",
+        "pan_left",
+        "pan_right",
+        "tilt_up",
+        "tilt_down",
+        "zoom",
+        "dynamic_action",
+    ]

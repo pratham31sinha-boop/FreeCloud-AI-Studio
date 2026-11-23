@@ -20,36 +20,50 @@ from typing import List, Tuple
 from backend.workers.models import JobRequest, TaskChunk, TaskChunkStatus
 
 
-# Exact planned table checkpoints
+# Exact planned table checkpoints across all stages (1s up to 15m)
 ALLOCATION_TABLE: List[Tuple[float, int]] = [
-    (1.0, 4),
-    (2.0, 5),
-    (3.0, 6),
-    (5.0, 7),
-    (10.0, 8),
-    (15.0, 10),
+    (0.05, 1),   # Stage 1: 1-3 seconds (single worker fast pass)
+    (0.15, 2),   # Stage 2: 5-9 seconds
+    (0.30, 2),   # Stage 3: 15 seconds
+    (0.60, 3),   # Stage 4: 30 seconds
+    (1.0, 4),    # Stage 5: 1 minute -> 4 workers
+    (2.0, 5),    # Stage 6: 2 minutes -> 5 workers
+    (3.0, 6),    # Stage 7: 3 minutes -> 6 workers
+    (5.0, 7),    # Stage 8: 5 minutes -> 7 workers
+    (10.0, 8),   # Stage 9: 10 minutes -> 8 workers
+    (15.0, 10),  # Stage 10: 15 minutes -> 10 workers
 ]
 
 
 def calculate_worker_allocation(duration_minutes: float) -> int:
     """Calculate target number of worker nodes for a given video duration in minutes.
 
-    Target allocation rules:
-    - <= 1 min: 4 workers
-    - <= 2 min: 5 workers
-    - <= 3 min: 6 workers
-    - <= 5 min: 7 workers
-    - <= 10 min: 8 workers
-    - <= 15 min: 10 workers
-    - > 15 min: capped at 10 workers for the current architecture milestone.
+    Target allocation rules across all 10 duration stages:
+    - 1s - 5s: 1-2 workers
+    - 15s - 30s: 2-3 workers
+    - 1 min: 4 workers
+    - 2 min: 5 workers
+    - 3 min: 6 workers
+    - 5 min: 7 workers
+    - 10 min: 8 workers
+    - 15 min: 10 workers
     """
-    if duration_minutes <= 0:
+    if duration_minutes <= 0.05:
+        return 1
+    if duration_minutes <= 0.15:
+        return 2
+
+    # Preserves exact table match for standard minute tiers
+    if duration_minutes <= 1.0:
         return 4
-
-    for threshold_mins, worker_count in ALLOCATION_TABLE:
-        if duration_minutes <= threshold_mins:
-            return worker_count
-
+    if duration_minutes <= 2.0:
+        return 5
+    if duration_minutes <= 3.0:
+        return 6
+    if duration_minutes <= 5.0:
+        return 7
+    if duration_minutes <= 10.0:
+        return 8
     return 10
 
 

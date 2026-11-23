@@ -47,6 +47,8 @@ data/outputs/*
 !data/outputs/.gitkeep
 data/characters/*
 !data/characters/.gitkeep
+data/analysis/**
+!data/analysis/.gitkeep
 
 # IDEs
 .vscode/

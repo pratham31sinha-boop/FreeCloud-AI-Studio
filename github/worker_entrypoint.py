@@ -300,14 +300,6 @@ class WorkerRunner:
                 writer.write(img)
         finally:
             writer.release()
-                "error_code": "RENDER_EXCEPTION",
-                "error_details": str(exc),
-                "will_retry": True,
-            }
-            try:
-                self._post_json("/api/v1/workers/fail-chunk", fail_payload)
-            except Exception as report_err:
-                logger.error("Failed to report failure to backend: %s", report_err)
 
 
 def main():
