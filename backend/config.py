@@ -43,6 +43,9 @@ class Settings(BaseModel):
     github_pat_token: str = Field(
         default_factory=lambda: os.getenv("GITHUB_PAT_TOKEN", "")
     )
+    public_backend_url: str = Field(
+        default_factory=lambda: os.getenv("FREECLOUD_PUBLIC_URL", "")
+    )
     worker_heartbeat_timeout_sec: int = Field(default=120)
     worker_task_lease_sec: int = Field(default=300)
     worker_max_retries: int = Field(default=2)

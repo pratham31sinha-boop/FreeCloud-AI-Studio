@@ -57,12 +57,17 @@ class GitHubActionsDispatcher(BaseWorkerDispatcher):
             "Authorization": f"Bearer {self.pat_token}",
             "User-Agent": "FreeCloud-AI-Studio-Orchestrator",
         }
+        backend_endpoint = (
+            settings.public_backend_url
+            if settings.public_backend_url
+            else f"http://{settings.host}:{settings.port}"
+        )
         payload = {
             "ref": "main",
             "inputs": {
                 "job_id": job_id,
                 "worker_count": str(worker_count),
-                "backend_url": f"http://{settings.host}:{settings.port}",
+                "backend_url": backend_endpoint,
                 **(extra_inputs or {}),
             },
         }
