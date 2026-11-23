@@ -59,6 +59,24 @@ jobs:
         if: steps.check_active.outputs.active == 'true'
         uses: actions/checkout@v4
 
+      - name: Allocate 16GB RAM Memory Pool & Clean Disk Space
+        if: steps.check_active.outputs.active == 'true'
+        run: |
+          echo "=== Freeing Disk Space on Runner ==="
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+          echo "=== Configuring 16GB High-Speed Memory Pool ==="
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
+          echo "=== Runner Memory Specifications (16GB+ Pool Active) ==="
+          free -h
+          lscpu | grep "Model name\|CPU(s):" || true
+
       - name: Set up Python
         if: steps.check_active.outputs.active == 'true'
         uses: actions/setup-python@v5
