@@ -1,0 +1,65 @@
+"""Job management API routes."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import FileResponse
+from backend.generation.pipeline import generation_pipeline
+from backend.storage.manager import storage_manager
+from backend.workers.models import JobRecord, JobRequest
+from backend.workers.orchestrator import worker_orchestrator
+
+router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+
+@router.post("", response_model=JobRecord, status_code=status.HTTP_201_CREATED)
+async def create_job(request: JobRequest) -> JobRecord:
+    """Submit a new anime video generation job."""
+    return await generation_pipeline.initiate_job(request)
+
+
+@router.get("", response_model=List[JobRecord])
+def list_jobs() -> List[JobRecord]:
+    """Retrieve all submitted jobs ordered by creation time."""
+    return worker_orchestrator.list_jobs()
+
+
+@router.get("/{job_id}")
+def get_job_status(job_id: str) -> Dict[str, Any]:
+    """Retrieve live status, chunk allocations, and continuity quality report."""
+    status_data = generation_pipeline.get_pipeline_status(job_id)
+    if not status_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+    return status_data
+
+
+@router.post("/{job_id}/cancel")
+def cancel_job(job_id: str) -> Dict[str, str]:
+    """Cancel an in-flight video generation job."""
+    success = worker_orchestrator.cancel_job(job_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job {job_id} could not be cancelled or has already completed.",
+        )
+    return {"message": f"Job {job_id} cancelled"}
+
+
+@router.get("/{job_id}/video")
+def download_final_video(job_id: str):
+    """Download or stream the generated coherent video output."""
+    output_path = storage_manager.get_output_video(job_id)
+    if not output_path or not output_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Final video output for job {job_id} is not yet available.",
+        )
+    return FileResponse(
+        path=str(output_path),
+        media_type="video/mp4",
+        filename=f"{job_id}_anime_final.mp4",
+    )

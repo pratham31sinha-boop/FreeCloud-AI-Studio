@@ -1,0 +1,113 @@
+{
+  "client_id": "freecloud_jagdhatri_engine",
+  "workflow_description": "Jagdhatri Serial Scene Transfer: Preserving Character Identity via IP-Adapter, Pose via ControlNet, Motion via AnimateDiff",
+  "prompt": {
+    "1": {
+      "inputs": {
+        "ckpt_name": "animagine_xl_v3.safetensors"
+      },
+      "class_type": "CheckpointLoaderSimple"
+    },
+    "2": {
+      "inputs": {
+        "text": "Jagdhatri Mukherjee, JAS special agent action stance, dark tactical navy jacket, sharp eyes, high-contrast anime aesthetics, ufotable style, 4k",
+        "clip": [
+          "1",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "3": {
+      "inputs": {
+        "text": "poorly drawn face, disfigured, blurry, low frame rate, color mismatch, inconsistent identity",
+        "clip": [
+          "1",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "4": {
+      "inputs": {
+        "ipadapter_file": "ip-adapter-plus_sd15.safetensors"
+      },
+      "class_type": "IPAdapterModelLoader"
+    },
+    "5": {
+      "inputs": {
+        "image": "jagdhatri_face_reference.png",
+        "upload": "image"
+      },
+      "class_type": "LoadImage"
+    },
+    "6": {
+      "inputs": {
+        "weight": 0.85,
+        "weight_type": "standard",
+        "model": [
+          "1",
+          0
+        ],
+        "ipadapter": [
+          "4",
+          0
+        ],
+        "image": [
+          "5",
+          0
+        ]
+      },
+      "class_type": "IPAdapterApply"
+    },
+    "7": {
+      "inputs": {
+        "control_net_name": "control_v11p_sd15_openpose.pth"
+      },
+      "class_type": "ControlNetLoader"
+    },
+    "8": {
+      "inputs": {
+        "strength": 0.8,
+        "start_percent": 0.0,
+        "end_percent": 0.9,
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "control_net": [
+          "7",
+          0
+        ]
+      },
+      "class_type": "ControlNetApplyAdvanced"
+    },
+    "9": {
+      "inputs": {
+        "seed": 9182734,
+        "steps": 28,
+        "cfg": 8.0,
+        "sampler_name": "dpmpp_2m_sde",
+        "scheduler": "karras",
+        "denoise": 1.0,
+        "model": [
+          "6",
+          0
+        ],
+        "positive": [
+          "8",
+          0
+        ],
+        "negative": [
+          "8",
+          1
+        ]
+      },
+      "class_type": "KSampler"
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "client_id": "freecloud_client",
+  "prompt": {
+    "1": {
+      "inputs": {
+        "ckpt_name": "animagine_xl_v3.safetensors"
+      },
+      "class_type": "CheckpointLoaderSimple"
+    },
+    "2": {
+      "inputs": {
+        "text": "Jagdhatri anime conversion, dynamic action scene, sharp anime lineart, studio lighting, masterpiece, high quality",
+        "clip": [
+          "1",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "3": {
+      "inputs": {
+        "text": "blurry, low resolution, artifacts, extra limbs, bad hands, flicker, washed out colors",
+        "clip": [
+          "1",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "4": {
+      "inputs": {
+        "width": 768,
+        "height": 768,
+        "batch_size": 24
+      },
+      "class_type": "EmptyLatentImage"
+    },
+    "5": {
+      "inputs": {
+        "model_name": "mm_sd_v15_v2.ckpt",
+        "beta_schedule": "sqrt_linear",
+        "context_length": 16,
+        "context_stride": 1,
+        "context_overlap": 4
+      },
+      "class_type": "AnimateDiffLoaderWithContext"
+    },
+    "6": {
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "motion_model": [
+          "5",
+          0
+        ]
+      },
+      "class_type": "AnimateDiffApply"
+    },
+    "7": {
+      "inputs": {
+        "seed": 4281923,
+        "steps": 25,
+        "cfg": 7.5,
+        "sampler_name": "euler_ancestral",
+        "scheduler": "karras",
+        "denoise": 1,
+        "model": [
+          "6",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "4",
+          0
+        ]
+      },
+      "class_type": "KSampler"
+    },
+    "8": {
+      "inputs": {
+        "samples": [
+          "7",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      },
+      "class_type": "VAEDecode"
+    },
+    "9": {
+      "inputs": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "fc_anime_out",
+        "format": "video/h264-mp4",
+        "pingpong": false,
+        "save_output": true,
+        "images": [
+          "8",
+          0
+        ]
+      },
+      "class_type": "VHS_VideoCombine"
+    }
+  }
+}

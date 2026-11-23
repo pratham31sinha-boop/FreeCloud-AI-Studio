@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>FreeCloud AI Studio — AI Anime Video Generation</title>
+  <meta name="description" content="AI-powered anime video generation platform recreating live-action TV serials like Jagdhatri into coherent anime.">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header / Navigation -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+            <path d="m13 10-3 5h4l-2 5" stroke="#38bdf8"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>FreeCloud <span class="gradient-text">AI Studio</span></h1>
+          <span class="brand-tag">Anime Video Generation Platform</span>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-pill" id="backendStatusPill">
+          <span class="status-dot pulse-green"></span>
+          <span id="backendStatusText">Backend Ready</span>
+        </div>
+        <div class="status-pill worker-pill" id="workerFleetPill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+            <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+          </svg>
+          <span id="fleetStatusText">4 Target Workers</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <div class="dashboard-grid">
+
+      <!-- LEFT COLUMN: Creation & Parameters -->
+      <section class="studio-card creation-panel">
+        <div class="card-header">
+          <h2>Video Production Studio</h2>
+          <span class="badge">Milestone 1</span>
+        </div>
+
+        <!-- Project Spotlight Preset -->
+        <div class="jagdhatri-banner" id="jagdhatriPresetBtn" role="button" tabindex="0">
+          <div class="banner-badge">Featured Target</div>
+          <div class="banner-content">
+            <h3>Jagdhatri Serial Scene Recreation</h3>
+            <p>Click to load Jagdhatri (JAS) action sequence prompt, character memory & martial arts choreography presets.</p>
+          </div>
+          <div class="banner-action">
+            <span class="btn-preset">Load Preset →</span>
+          </div>
+        </div>
+
+        <form id="generationForm" class="studio-form">
+          <!-- Video Source Upload -->
+          <div class="form-group">
+            <label class="form-label" for="videoFileInput">
+              <span>Original Video Footage</span>
+              <span class="label-hint">MP4, MOV, WEBM (Max 250MB)</span>
+            </label>
+            <div class="upload-dropzone" id="uploadDropzone">
+              <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/webm" class="visually-hidden">
+              <div class="dropzone-content">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p class="dropzone-text"><strong>Tap or drag</strong> original Jagdhatri / reference scene here</p>
+                <span class="file-name-preview" id="uploadedFileName">No file selected yet</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Story Script / Prompt Area -->
+          <div class="form-group">
+            <label class="form-label" for="storyPromptInput">
+              <span>Scene Script & Narrative Direction</span>
+              <span class="label-hint">Dialogue & Action Continuity</span>
+            </label>
+            <textarea
+              id="storyPromptInput"
+              rows="4"
+              class="form-textarea"
+              placeholder="e.g. Jagdhatri enters the warehouse, disarms the first operative with a rapid spin kick, eyes locked in focus. Jash covers the exit flank with calm determination."
+              required
+            ></textarea>
+          </div>
+
+          <!-- Target Duration Selector -->
+          <div class="form-group">
+            <div class="label-with-meta">
+              <label class="form-label">Target Duration & Parallel Worker Allocation</label>
+              <span class="allocation-badge" id="allocationBadge">4 Workers Target</span>
+            </div>
+            <div class="duration-grid" id="durationSelector">
+              <button type="button" class="duration-btn active" data-duration="1.0" data-workers="4">
+                <span class="duration-time">1 Min</span>
+                <span class="duration-workers">4 Workers</span>
+              </button>
+              <button type="button" class="duration-btn" data-duration="2.0" data-workers="5">
+                <span class="duration-time">2 Min</span>
+                <span class="duration-workers">5 Workers</span>
+              </button>
+              <button type="button" class="duration-btn" data-duration="3.0" data-workers="6">
+                <span class="duration-time">3 Min</span>
+                <span class="duration-workers">6 Workers</span>
+              </button>
+              <button type="button" class="duration-btn" data-duration="5.0" data-workers="7">
+                <span class="duration-time">5 Min</span>
+                <span class="duration-workers">7 Workers</span>
+              </button>
+              <button type="button" class="duration-btn" data-duration="10.0" data-workers="8">
+                <span class="duration-time">10 Min</span>
+                <span class="duration-workers">8 Workers</span>
+              </button>
+              <button type="button" class="duration-btn" data-duration="15.0" data-workers="10">
+                <span class="duration-time">15 Min</span>
+                <span class="duration-workers">10 Workers</span>
+              </button>
+            </div>
+            <p class="allocation-disclaimer">
+              * Planned target worker allocations for temporary GitHub Actions runner orchestration.
+            </p>
+          </div>
+
+          <!-- Anime Style Selector -->
+          <div class="form-group">
+            <label class="form-label" for="animeStyleSelect">Anime Visual Aesthetic</label>
+            <div class="select-wrapper">
+              <select id="animeStyleSelect" class="form-select">
+                <option value="shinkai_cinematic">Makoto Shinkai Cinematic (Atmospheric Lighting & Skies)</option>
+                <option value="ufotable_digital" selected>Ufotable Digital Anime (High Action, Crisp Lineart)</option>
+                <option value="mappa_action">MAPPA Dynamic Action (Gritty Contrast & Fast Motion)</option>
+                <option value="ghibli_classic">Studio Ghibli Hand-Drawn (Vibrant Colors & Soft Shades)</option>
+                <option value="kyoani_soft">Kyoto Animation (Expressive Characters & Delicate Lighting)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Continuity Engine Modules Toggle -->
+          <details class="continuity-details" open>
+            <summary class="continuity-summary">
+              <span>Continuity Engine Settings</span>
+              <span class="continuity-status-tag">Active</span>
+            </summary>
+            <div class="continuity-checkbox-grid">
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkIdentity" checked>
+                <span>Character Appearance Memory (Jagdhatri & Jash IP-Adapter)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkMotion" checked>
+                <span>Motion & Action References (Pose / DWPose Tracking)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkAudioSync" checked>
+                <span>Dialogue & Audio Synchronization (Lip-Sync Engine)</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="checkQualityGate" checked>
+                <span>Quality Check Gate (Enforce >= 0.75 Consistency Score)</span>
+              </label>
+            </div>
+          </details>
+
+          <!-- Generation CTA Button -->
+          <button type="submit" id="generateBtn" class="btn-generate">
+            <span class="btn-icon">⚡</span>
+            <span id="generateBtnText">Generate Anime Video</span>
+          </button>
+        </form>
+      </section>
+
+      <!-- RIGHT COLUMN: Live Orchestration, Workers & Preview -->
+      <section class="studio-card preview-panel">
+        <div class="card-header">
+          <h2>Production Monitor & Preview</h2>
+          <span class="job-state-tag" id="jobStateTag">System Idle</span>
+        </div>
+
+        <!-- Progress Overview -->
+        <div class="progress-section" id="progressSection">
+          <div class="progress-meta">
+            <span class="progress-stage" id="progressStage">Ready to initialize job</span>
+            <span class="progress-percent" id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Distributed Worker Fleet Matrix -->
+        <div class="worker-matrix-card">
+          <div class="matrix-header">
+            <h3>GitHub Actions Worker Fleet</h3>
+            <span class="fleet-count" id="fleetCountLabel">0 Active Workers</span>
+          </div>
+          <div class="worker-grid" id="workerGrid">
+            <div class="worker-card empty-state">
+              <p>Workers will be provisioned when job is submitted.</p>
+            </div>
+          </div>
+          <div class="worker-actions">
+            <button type="button" id="simulateWorkerBtn" class="btn-secondary" style="display: none;">
+              Simulate Worker Execution Chunk
+            </button>
+          </div>
+        </div>
+
+        <!-- Continuity Quality Diagnostics -->
+        <div class="continuity-metrics-card">
+          <h3>Continuity Assurance Metrics</h3>
+          <div class="metrics-grid">
+            <div class="metric-item">
+              <span class="metric-label">Identity Preserved</span>
+              <span class="metric-value" id="metricIdentity">—</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Motion Fidelity</span>
+              <span class="metric-value" id="metricMotion">—</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Lip-Sync Audio</span>
+              <span class="metric-value" id="metricAudio">—</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Temporal Flicker</span>
+              <span class="metric-value" id="metricFlicker">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Video Player Preview -->
+        <div class="video-preview-wrapper">
+          <div class="player-container">
+            <video id="finalVideoPlayer" class="video-player" controls preload="metadata" poster="">
+              <source id="videoSource" src="" type="video/mp4">
+              Your browser does not support HTML5 video.
+            </video>
+            <div class="video-placeholder" id="videoPlaceholder">
+              <div class="placeholder-graphic">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+              </div>
+              <p>Generated coherent anime video will stream here upon completion</p>
+            </div>
+          </div>
+
+          <!-- Video Actions -->
+          <div class="video-action-bar">
+            <a id="downloadVideoBtn" class="btn-download disabled" href="#" download="freecloud_anime_scene.mp4">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Final Video</span>
+            </a>
+            <button type="button" id="cancelJobBtn" class="btn-cancel" style="display: none;">
+              Cancel Job
+            </button>
+          </div>
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>FreeCloud AI Studio • Modular Anime Video Generation Engine • Foundation Release v0.1.0</p>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+name: FreeCloud Distributed Worker Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "FreeCloud Job ID to process"
+        required: true
+        type: string
+      worker_count:
+        description: "Number of parallel workers to deploy (1 to 10)"
+        required: true
+        default: "4"
+        type: string
+      backend_url:
+        description: "Base URL of FreeCloud AI Studio API (e.g., https://api.freecloud.ai or tunnel URL)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  worker_matrix:
+    name: "Worker Runner ${{ matrix.worker_index }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Supports up to 10 concurrent runners matching the 15-minute job allocation tier
+        worker_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+    steps:
+      - name: Check Worker Index vs Target Count
+        id: check_active
+        run: |
+          TARGET="${{ inputs.worker_count }}"
+          INDEX="${{ matrix.worker_index }}"
+          if [ "$INDEX" -le "$TARGET" ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "Runner $INDEX is active for job ${{ inputs.job_id }} (Target fleet: $TARGET)"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "Runner $INDEX is idle / exceeds target worker allocation of $TARGET. Skipping."
+          fi
+
+      - name: Checkout FreeCloud Repository
+        if: steps.check_active.outputs.active == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.check_active.outputs.active == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Worker Dependencies
+        if: steps.check_active.outputs.active == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pydantic requests
+
+      - name: Execute Worker Runner Entrypoint
+        if: steps.check_active.outputs.active == 'true'
+        env:
+          FREECLOUD_BACKEND_URL: ${{ inputs.backend_url }}
+          FREECLOUD_JOB_ID: ${{ inputs.job_id }}
+          WORKER_ID: "gha-runner-${{ inputs.job_id }}-${{ matrix.worker_index }}"
+        run: |
+          python github/worker_entrypoint.py \
+            --backend-url "$FREECLOUD_BACKEND_URL" \
+            --job-id "$FREECLOUD_JOB_ID" \
+            --worker-id "$WORKER_ID" \
+            --max-idle-seconds 45
