@@ -104,14 +104,21 @@ class WorkerOrchestrator:
         )
         self.jobs[job_id] = record
 
-        # Pre-synthesize or acquire Master Character Anchor so all runners have it ready immediately
+        # Pre-synthesize Master Character Anchor and Progressive Act Anchors so all runners have them ready immediately
         clean_story = (request.story_prompt or "").strip()
         m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
         try:
             from backend.storage.manager import storage_manager
             storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
+            for chk in chunks:
+                storage_manager.get_or_create_act_anchor(
+                    job_id=job_id,
+                    seq_idx=chk.sequence_index,
+                    prompt=chk.prompt_segment,
+                    seed=m_seed,
+                )
         except Exception as anchor_err:
-            logger.warning("Could not pre-synthesize master anchor: %s", anchor_err)
+            logger.warning("Could not pre-synthesize master or act anchors: %s", anchor_err)
 
         # Dispatch workers via GitHub Actions or local dispatcher
         record.status = JobStatus.ORCHESTRATING
@@ -225,7 +232,7 @@ class WorkerOrchestrator:
                         prompt_segment=chunk.prompt_segment,
                         anime_style=chunk.anime_style,
                         model_name=getattr(chunk, "model_name", getattr(job.request, "model_name", "wan_2_1")),
-                        anchor_frame_url=f"/api/v1/jobs/{job.job_id}/master-anchor",
+                        anchor_frame_url=chunk.anchor_frame_url or f"/api/v1/jobs/{job.job_id}/anchor/{chunk.sequence_index}",
                         master_seed=m_seed,
                         characters=char_bundles,
                         total_chunks=len(job.chunks),

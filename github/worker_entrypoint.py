@@ -513,7 +513,19 @@ class WorkerRunner:
         total_samples = int(sample_rate * duration_sec)
         t = np.linspace(0, duration_sec, total_samples, endpoint=False)
 
-        if theme == "ghibli_train":
+        if theme == "hypercar_engine":
+            # Roaring V12 / Twin-Turbo engine acoustic synthesis with rev climbing, turbo spool, exhaust notes
+            rpm_curve = 85.0 + 110.0 * ((t / max(0.1, duration_sec)) ** 1.3)
+            engine_hum = (
+                np.sin(2 * np.pi * rpm_curve * t) * 0.38
+                + np.sin(2 * np.pi * rpm_curve * 2.0 * t) * 0.24
+                + np.sin(2 * np.pi * rpm_curve * 3.0 * t) * 0.14
+            )
+            turbo_spool = np.sin(2 * np.pi * (1400.0 + 600.0 * (t / max(0.1, duration_sec))) * t) * 0.07 * (t / max(0.1, duration_sec))
+            wind_rush = np.random.normal(0, 0.10, total_samples) * (0.6 + 0.4 * (t / max(0.1, duration_sec)))
+            exhaust_sub = np.sin(2 * np.pi * 38.0 * t) * 0.25
+            audio = (engine_hum + turbo_spool + wind_rush + exhaust_sub).clip(-0.95, 0.95)
+        elif theme == "ghibli_train":
             # Steam locomotive chug (amplitude modulated noise) + steam hiss + distant whistle
             chug = (np.sin(2 * np.pi * 3.5 * t) ** 4) * np.random.normal(0, 0.28, total_samples)
             hiss = np.random.normal(0, 0.07, total_samples)
@@ -953,106 +965,156 @@ class WorkerRunner:
                     writer.write(frame_graded)
             else:
                 logger.info(
-                    "[%s Engine] Activating High-End Anatomical Dynamic Motion Synthesis for Act %d/%d",
+                    "[%s Engine] Activating High-End Kinetic Motion Synthesis for Act %d/%d",
                     model_name.upper(), seq_idx + 1, total_chunks,
                 )
                 kf1 = anchor_frame
                 grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
 
-                # Anatomical region segmentation masks
-                paw_mask = np.clip((grid_y - height * 0.58) / (height * 0.42), 0.0, 1.0)
-                body_mask = np.clip(1.0 - np.abs(grid_y - height * 0.50) / (height * 0.30), 0.0, 1.0)
-                head_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.45, grid_y - height * 0.38) / (height * 0.28)), 0.0, 1.0)
-                mouth_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.46, grid_y - height * 0.48) / (height * 0.16)), 0.0, 1.0)
+                is_vehicle = any(k in clean_prompt.lower() for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road"))
 
-                for idx in range(total_frames):
-                    t_chunk = idx / max(1, total_frames - 1)
-                    t_global = (seq_idx + t_chunk) / float(total_chunks)
+                if is_vehicle:
+                    for idx in range(total_frames):
+                        t_chunk = idx / max(1, total_frames - 1)
+                        t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # 1. Anatomical Quadruped Stride Cycle (Front vs Hind alternate phases)
-                    stride_freq = 2.4 if seq_idx < 3 else 4.0
-                    stride_phase = 2.0 * np.pi * stride_freq * t_chunk
-                    paw_dx = 14.0 * np.sin(stride_phase) * paw_mask * np.cos(np.pi * (grid_x / width - 0.5))
-                    paw_dy = -5.0 * np.abs(np.cos(stride_phase)) * paw_mask
+                        # 1. High-speed road asphalt translation & motion blur
+                        speed_dx = 28.0 * t_chunk * ((grid_y / height) ** 1.3)
 
-                    # 2. Muscular Spine & Ribcage Breathing Motion
-                    spine_dy = 3.5 * np.cos(stride_phase * 2.0) * body_mask
-                    breath_scale = 2.0 * np.sin(2.0 * np.pi * 0.8 * t_chunk) * body_mask
+                        # 2. Engine & Chassis Harmonic Vibration
+                        chassis_dy = 1.2 * np.sin(2.0 * np.pi * 10.0 * t_chunk)
 
-                    # 3. Head Stalking & Horizon Stabilization
-                    head_dx = 3.5 * np.sin(2.0 * np.pi * 0.6 * t_chunk) * head_mask
-                    head_dy = 2.0 * np.cos(2.0 * np.pi * 1.2 * t_chunk) * head_mask
+                        # 3. Dynamic Act-Specific Steering & Drift Motion
+                        if seq_idx == 0:
+                            drift_dx = 8.0 * np.sin(np.pi * t_chunk)
+                            drift_roll = 0.5 * np.sin(np.pi * t_chunk)
+                        elif seq_idx == 1:
+                            drift_dx = 14.0 * np.sin(2.0 * np.pi * 0.6 * t_chunk)
+                            drift_roll = 0.8 * np.sin(2.0 * np.pi * 0.6 * t_chunk)
+                        elif seq_idx == 2:
+                            drift_env = np.sin(np.pi * t_chunk)
+                            drift_dx = 26.0 * drift_env * (grid_y / height)
+                            drift_roll = 3.2 * drift_env
+                        else:
+                            drift_dx = 5.0 * np.sin(2.0 * np.pi * 1.5 * t_chunk)
+                            drift_roll = 0.4 * np.sin(2.0 * np.pi * 1.5 * t_chunk)
 
-                    # 4. Act-Specific Narrative Action Progression
-                    if seq_idx == 0:
-                        # Act 1 (Emergence): Smooth stalking prowl forward from shadows
-                        act_fwd_dx = 18.0 * (t_chunk ** 1.1) * (grid_y / height)
-                        act_special_dy = 0.0
-                    elif seq_idx == 1:
-                        # Act 2 (Riverstones): Stepping across wet stones, active paw lifts
-                        act_fwd_dx = 24.0 * t_chunk * (grid_y / height)
-                        act_special_dy = 3.0 * np.sin(2.0 * np.pi * 3.0 * t_chunk) * paw_mask
-                    elif seq_idx == 2:
-                        # Act 3 (Snarl Climax): Low predatory crouch + jaw open snarl
-                        act_fwd_dx = 8.0 * t_chunk * (grid_y / height)
-                        snarl_curve = np.sin(np.pi * t_chunk)
-                        crouch_dy = 6.0 * snarl_curve * (1.0 - paw_mask)
-                        jaw_drop_dy = 12.0 * snarl_curve * mouth_mask
-                        act_special_dy = crouch_dy + jaw_drop_dy
-                    else:
-                        # Act 4 (Grand Gallop): Powerful sprinting leaps forward into deep night
-                        act_fwd_dx = 42.0 * (t_chunk ** 1.2) * (grid_y / height)
-                        gallop_leap_dy = -12.0 * np.abs(np.sin(2.0 * np.pi * 2.5 * t_chunk))
-                        act_special_dy = gallop_leap_dy
+                        map_x = (grid_x + speed_dx + drift_dx).astype(np.float32)
+                        map_y = (grid_y + chassis_dy).astype(np.float32)
 
-                    total_dx = act_fwd_dx + paw_dx + head_dx
-                    total_dy = paw_dy + spine_dy + breath_scale + head_dy + act_special_dy
+                        warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
-                    map_x = (grid_x + total_dx).astype(np.float32)
-                    map_y = (grid_y + total_dy).astype(np.float32)
+                        curr_zoom = 1.00 + 0.14 * t_chunk
+                        cx = (width / 2.0) + (t_chunk * 20.0)
+                        cy = height / 2.0
 
-                    warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+                        M = cv2.getRotationMatrix2D((cx, cy), drift_roll, curr_zoom)
+                        M[0, 2] += (width / 2.0) - cx
+                        M[1, 2] += (height / 2.0) - cy
 
-                    # Dynamic 3D Camera Tracking & Parallax
-                    curr_zoom = 1.00 + 0.14 * t_chunk + 0.04 * seq_idx
-                    cx = (width / 2.0) + (t_chunk * 24.0) + (seq_idx * 15.0)
-                    cy = (height / 2.0) - (t_chunk * 8.0)
+                        frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                    M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
-                    M[0, 2] += (width / 2.0) - cx
-                    M[1, 2] += (height / 2.0) - cy
+                        # Speed flare & twilight atmosphere
+                        flare_t = (seq_idx * 5.0) + (t_chunk * 5.0)
+                        flare = 8.0 * np.sin(grid_x * 0.01 + flare_t * 2.0) * (1.0 - grid_y / height)
+                        frame_f = frame.astype(np.float32)
+                        frame_f[:, :, 2] += np.clip(flare * 1.5, 0, 18)
+                        frame_f[:, :, 1] += np.clip(flare * 0.9, 0, 12)
+                        frame_f = np.clip(frame_f, 0, 255.0) / 255.0
 
-                    frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+                        if "wan" in model_name:
+                            frame_graded = np.clip(np.power(frame_f, 0.94) * 1.06 * 255.0, 0, 255).astype(np.uint8)
+                        elif "hunyuan" in model_name:
+                            frame_graded = np.clip(np.power(frame_f, 0.88) * 1.12 * 255.0, 0, 255).astype(np.uint8)
+                        else:
+                            frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
 
-                    # Atmospheric Volumetric Mist Flow (Living 3D Environment)
-                    mist_t = (seq_idx * 5.0) + (t_chunk * 5.0)
-                    mist_layer = 6.0 * np.sin(grid_x * 0.015 + mist_t * 1.5) * np.cos(grid_y * 0.02 + mist_t * 0.8)
-                    frame_f = frame.astype(np.float32)
-                    frame_f[:, :, 0] += np.clip(mist_layer * 1.2, 0, 15)
-                    frame_f[:, :, 1] += np.clip(mist_layer * 1.0, 0, 12)
-                    frame_f[:, :, 2] += np.clip(mist_layer * 0.8, 0, 10)
-                    frame_f = np.clip(frame_f, 0, 255.0) / 255.0
+                        frame_graded[:20, :] = 0
+                        frame_graded[-22:, :] = 0
+                        writer.write(frame_graded)
+                else:
+                    # Quadruped / Bipedal / General cinematic locomotion
+                    paw_mask = np.clip((grid_y - height * 0.58) / (height * 0.42), 0.0, 1.0)
+                    body_mask = np.clip(1.0 - np.abs(grid_y - height * 0.50) / (height * 0.30), 0.0, 1.0)
+                    head_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.45, grid_y - height * 0.38) / (height * 0.28)), 0.0, 1.0)
+                    mouth_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.46, grid_y - height * 0.48) / (height * 0.16)), 0.0, 1.0)
 
-                    # Model-Specific Cinematic Color Grading & Polish
-                    if "wan" in model_name:
-                        frame_graded = np.clip(np.power(frame_f, 0.95) * 1.05 * 255.0, 0, 255).astype(np.uint8)
-                    elif "hunyuan" in model_name:
-                        frame_graded = np.clip(np.power(frame_f, 0.88) * 1.12 * 255.0, 0, 255).astype(np.uint8)
-                    else:
-                        frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
+                    for idx in range(total_frames):
+                        t_chunk = idx / max(1, total_frames - 1)
+                        t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # Cinematic 2.35:1 Widescreen Letterboxing
-                    frame_graded[:20, :] = 0
-                    frame_graded[-22:, :] = 0
+                        stride_freq = 2.4 if seq_idx < 3 else 4.0
+                        stride_phase = 2.0 * np.pi * stride_freq * t_chunk
+                        paw_dx = 14.0 * np.sin(stride_phase) * paw_mask * np.cos(np.pi * (grid_x / width - 0.5))
+                        paw_dy = -5.0 * np.abs(np.cos(stride_phase)) * paw_mask
+                        spine_dy = 3.5 * np.cos(stride_phase * 2.0) * body_mask
+                        breath_scale = 2.0 * np.sin(2.0 * np.pi * 0.8 * t_chunk) * body_mask
+                        head_dx = 3.5 * np.sin(2.0 * np.pi * 0.6 * t_chunk) * head_mask
+                        head_dy = 2.0 * np.cos(2.0 * np.pi * 1.2 * t_chunk) * head_mask
 
-                    writer.write(frame_graded)
+                        if seq_idx == 0:
+                            act_fwd_dx = 18.0 * (t_chunk ** 1.1) * (grid_y / height)
+                            act_special_dy = 0.0
+                        elif seq_idx == 1:
+                            act_fwd_dx = 24.0 * t_chunk * (grid_y / height)
+                            act_special_dy = 3.0 * np.sin(2.0 * np.pi * 3.0 * t_chunk) * paw_mask
+                        elif seq_idx == 2:
+                            act_fwd_dx = 8.0 * t_chunk * (grid_y / height)
+                            snarl_curve = np.sin(np.pi * t_chunk)
+                            crouch_dy = 6.0 * snarl_curve * (1.0 - paw_mask)
+                            jaw_drop_dy = 12.0 * snarl_curve * mouth_mask
+                            act_special_dy = crouch_dy + jaw_drop_dy
+                        else:
+                            act_fwd_dx = 42.0 * (t_chunk ** 1.2) * (grid_y / height)
+                            gallop_leap_dy = -12.0 * np.abs(np.sin(2.0 * np.pi * 2.5 * t_chunk))
+                            act_special_dy = gallop_leap_dy
+
+                        total_dx = act_fwd_dx + paw_dx + head_dx
+                        total_dy = paw_dy + spine_dy + breath_scale + head_dy + act_special_dy
+
+                        map_x = (grid_x + total_dx).astype(np.float32)
+                        map_y = (grid_y + total_dy).astype(np.float32)
+
+                        warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+
+                        curr_zoom = 1.00 + 0.14 * t_chunk + 0.04 * seq_idx
+                        cx = (width / 2.0) + (t_chunk * 24.0) + (seq_idx * 15.0)
+                        cy = (height / 2.0) - (t_chunk * 8.0)
+
+                        M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
+                        M[0, 2] += (width / 2.0) - cx
+                        M[1, 2] += (height / 2.0) - cy
+
+                        frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+
+                        mist_t = (seq_idx * 5.0) + (t_chunk * 5.0)
+                        mist_layer = 6.0 * np.sin(grid_x * 0.015 + mist_t * 1.5) * np.cos(grid_y * 0.02 + mist_t * 0.8)
+                        frame_f = frame.astype(np.float32)
+                        frame_f[:, :, 0] += np.clip(mist_layer * 1.2, 0, 15)
+                        frame_f[:, :, 1] += np.clip(mist_layer * 1.0, 0, 12)
+                        frame_f[:, :, 2] += np.clip(mist_layer * 0.8, 0, 10)
+                        frame_f = np.clip(frame_f, 0, 255.0) / 255.0
+
+                        if "wan" in model_name:
+                            frame_graded = np.clip(np.power(frame_f, 0.95) * 1.05 * 255.0, 0, 255).astype(np.uint8)
+                        elif "hunyuan" in model_name:
+                            frame_graded = np.clip(np.power(frame_f, 0.88) * 1.12 * 255.0, 0, 255).astype(np.uint8)
+                        else:
+                            frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
+
+                        frame_graded[:20, :] = 0
+                        frame_graded[-22:, :] = 0
+                        writer.write(frame_graded)
+
 
         finally:
             writer.release()
 
         # Classify acoustic theme for MiniMax H3 spatial stereo audio design
         prompt_lower = clean_prompt.lower()
-        if any(w in prompt_lower for w in ("train", "steam", "submerged", "ghibli", "cottage", "witch")):
+        if any(w in prompt_lower for w in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "speed", "auto")):
+            theme = "hypercar_engine"
+        elif any(w in prompt_lower for w in ("train", "steam", "submerged", "ghibli", "cottage", "witch")):
             theme = "ghibli_train"
         elif any(w in prompt_lower for w in ("cyberpunk", "neon", "tokyo", "katana", "cyborg", "hacker", "hoverbike")):
             theme = "cyberpunk"

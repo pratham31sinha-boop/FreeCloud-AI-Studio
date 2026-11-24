@@ -60,6 +60,47 @@ def calculate_worker_allocation(duration_minutes: float) -> int:
     return 10
 
 
+def generate_progressive_act_beats(story_prompt: str, total_acts: int = 4) -> List[str]:
+    """Generate narrative act progression beats tailored to the subject and prompt."""
+    p = story_prompt.lower()
+
+    if any(k in p for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
+        return [
+            "Act 1 (Ignition & Acceleration): Sleek titanium hypercar roaring out of a mountain pass onto the coastal cliffside highway at golden hour sunset, twin LED headlights piercing through twilight mist, gleaming metallic reflections",
+            "Act 2 (High-Speed Cruising): Accelerating at high velocity along the winding cliffside road, ocean waves crashing on rocks far below, tires gripping asphalt with high-speed motion blur, warm sun flare gleaming on windshield",
+            "Act 3 (Apex Drift Maneuver): Aggressive dynamic drift around a dramatic cliffside hairpin curve, tire smoke billowing, glowing red brake calipers, camera tracking the centrifugal slide with intense kinetic momentum",
+            "Act 4 (Hero Departure): Surging at full throttle down the wide illuminated coastal straightaway toward the vibrant neon-lit metropolis skyline on the horizon at dusk",
+        ]
+    elif any(k in p for k in ("astronaut", "space", "alien", "planet", "galaxy", "mars", "cosmos", "rover")):
+        return [
+            "Act 1 (Touchdown & First Steps): Astronaut stepping onto glowing alien planetary soil, gold-tinted reflective visor catching distant binary suns, atmospheric dust drifting",
+            "Act 2 (Traversal): Walking past crystalline rock spires and bioluminescent geysers, scanning alien geological formations with high-tech scanner",
+            "Act 3 (Discovery): Approaching an ancient floating alien monolith, geometric engravings pulsing with radiant blue energy as the astronaut reaches forward",
+            "Act 4 (Ascension): The alien artifact unleashes a swirling column of celestial light, camera pulling up into the starry nebula cosmos",
+        ]
+    elif any(k in p for k in ("samurai", "cyberpunk", "ronin", "tokyo", "katana", "ninja", "blade")):
+        return [
+            "Act 1 (Atmospheric Entrance): Cybernetic ronin walking slowly through a rain-drenched neon Tokyo alleyway at night, trench coat billowing in the wind",
+            "Act 2 (Drawing the Blade): Stepping through puddles reflecting vibrant holographic billboards, drawing a glowing energy katana with an electric hum",
+            "Act 3 (Combat Climax): Dynamic spinning strike through falling rain, cutting holographic light beams with sparks and arcs of electric energy",
+            "Act 4 (Silent Exit): Smoothly sheathing the glowing blade as rain falls, fading into the dark shadows of the towering neon skyline",
+        ]
+    elif any(k in p for k in ("panther", "leopard", "tiger", "lion", "cat", "feline")):
+        return [
+            "Act 1 (Emergence): The majestic predator stealthily emerges from deep misty rainforest shadows into the light, initiating a smooth predatory prowl, glowing emerald eyes scanning ahead",
+            "Act 2 (Progression): Continuing forward through the terrain, stepping across glistening wet mossy riverstones, water droplets flying off paws, sleek fur rippling with continuous momentum",
+            "Act 3 (Climactic Tension): Intense moment of focus, lowering into an aggressive stance, baring sharp fangs in a low territorial snarl, breath visible in humid night air, muscles tensed",
+            "Act 4 (Grand Finale): Powerful surge forward into a majestic full-speed stride, accelerating past luminous bioluminescent flora into the deep jungle canopy",
+        ]
+    else:
+        return [
+            f"Act 1 (Introduction): Establishing shot introducing {story_prompt.strip()}, emerging into the scene with atmospheric presence and smooth initial movement",
+            f"Act 2 (Development): Dynamic motion progression of {story_prompt.strip()}, traversing through the environment with continuous physical momentum",
+            f"Act 3 (Climax): High-intensity dramatic moment with peak action, emotional focus, and dynamic kinetic energy",
+            f"Act 4 (Resolution): Powerful concluding motion sequence surging toward the destination, panoramic cinematic camera pull-back",
+        ]
+
+
 def plan_task_chunks(
     job_id: str,
     request: JobRequest,
@@ -81,21 +122,7 @@ def plan_task_chunks(
     chunks: List[TaskChunk] = []
     current_time = 0.0
 
-    prompt_sentences = [
-        s.strip()
-        for s in request.story_prompt.replace("\n", " ").split(".")
-        if s.strip()
-    ]
-    if not prompt_sentences:
-        prompt_sentences = [request.story_prompt]
-
-    # Progressive 4-Act Storyline Continuation (eliminates looping, ensures real narrative progression)
-    act_beats = [
-        "Act 1 (Emergence): The subject stealthily emerges from deep misty rainforest shadows into the light, initiating a smooth predatory prowl, glowing emerald eyes scanning ahead",
-        "Act 2 (Progression): Continuing forward through the terrain, stepping across glistening wet mossy riverstones, water droplets flying off paws, sleek fur rippling with continuous momentum",
-        "Act 3 (Climactic Tension): Intense moment of focus, lowering into an aggressive stance, baring sharp fangs in a low territorial snarl, breath visible in humid night air, muscles tensed",
-        "Act 4 (Grand Finale): Powerful surge forward into a majestic full-speed stride, accelerating past luminous bioluminescent flora into the deep jungle canopy",
-    ]
+    act_beats = generate_progressive_act_beats(request.story_prompt, total_acts=calculated_chunks)
 
     for idx in range(calculated_chunks):
         end_time = min(total_seconds, current_time + chunk_duration)
@@ -125,3 +152,4 @@ def plan_task_chunks(
         current_time = end_time
 
     return chunks
+
