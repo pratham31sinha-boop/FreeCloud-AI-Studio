@@ -146,13 +146,13 @@ class WorkerRunner:
             logger.warning("Heartbeat failed: %s", exc)
             return False
 
-    def execute(self, max_idle_seconds: int = 60) -> None:
+    def execute(self, max_idle_seconds: int = 600) -> None:
         """Main worker execution loop."""
         if not self.register():
             sys.exit(1)
 
         idle_start = time.time()
-        logger.info("Starting task claim loop...")
+        logger.info("Starting task claim loop (Extend Clip Pipeline ready, Max Idle: %ds)...", max_idle_seconds)
 
         while True:
             self.heartbeat()
@@ -975,37 +975,43 @@ class WorkerRunner:
 
                 if is_vehicle:
                     for idx in range(total_frames):
-                        t_chunk = idx / max(1, total_frames - 1)
+                        # Video Extension continuous time progression
+                        if seq_idx == 0:
+                            t_chunk = idx / max(1, total_frames - 1)
+                        else:
+                            # Step forward seamlessly from the previous clip's ending frame
+                            t_chunk = (idx + 1) / float(total_frames)
                         t_global = (seq_idx + t_chunk) / float(total_chunks)
 
                         # 1. High-speed road asphalt translation & motion blur
-                        speed_dx = 28.0 * t_chunk * ((grid_y / height) ** 1.3)
+                        speed_dx = 24.0 * t_chunk * ((grid_y / height) ** 1.3)
 
-                        # 2. Engine & Chassis Harmonic Vibration
-                        chassis_dy = 1.2 * np.sin(2.0 * np.pi * 10.0 * t_chunk)
+                        # 2. Engine & Chassis Harmonic Vibration (continuous phase)
+                        chassis_dy = 1.2 * np.sin(2.0 * np.pi * 10.0 * (t_chunk + seq_idx * 5.25))
 
-                        # 3. Dynamic Act-Specific Steering & Drift Motion
+                        # 3. Dynamic Act-Specific Steering & Drift Motion (0-boundary continuous)
+                        drift_curve = np.sin(np.pi * t_chunk)
                         if seq_idx == 0:
-                            drift_dx = 8.0 * np.sin(np.pi * t_chunk)
-                            drift_roll = 0.5 * np.sin(np.pi * t_chunk)
+                            drift_dx = 8.0 * drift_curve
+                            drift_roll = 0.5 * drift_curve
                         elif seq_idx == 1:
-                            drift_dx = 14.0 * np.sin(2.0 * np.pi * 0.6 * t_chunk)
-                            drift_roll = 0.8 * np.sin(2.0 * np.pi * 0.6 * t_chunk)
+                            drift_dx = 14.0 * drift_curve
+                            drift_roll = 0.8 * drift_curve
                         elif seq_idx == 2:
-                            drift_env = np.sin(np.pi * t_chunk)
-                            drift_dx = 26.0 * drift_env * (grid_y / height)
-                            drift_roll = 3.2 * drift_env
+                            drift_dx = 22.0 * drift_curve * (grid_y / height)
+                            drift_roll = 2.4 * drift_curve
                         else:
-                            drift_dx = 5.0 * np.sin(2.0 * np.pi * 1.5 * t_chunk)
-                            drift_roll = 0.4 * np.sin(2.0 * np.pi * 1.5 * t_chunk)
+                            drift_dx = 6.0 * drift_curve
+                            drift_roll = 0.4 * drift_curve
 
                         map_x = (grid_x + speed_dx + drift_dx).astype(np.float32)
                         map_y = (grid_y + chassis_dy).astype(np.float32)
 
                         warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
-                        curr_zoom = 1.00 + 0.14 * t_chunk
-                        cx = (width / 2.0) + (t_chunk * 20.0)
+                        # Subtle camera tracking breath (1.0 at cuts to prevent compounding zoom across extended clips)
+                        curr_zoom = 1.00 + 0.03 * drift_curve
+                        cx = (width / 2.0) + (drift_curve * 12.0)
                         cy = height / 2.0
 
                         M = cv2.getRotationMatrix2D((cx, cy), drift_roll, curr_zoom)
@@ -1014,7 +1020,7 @@ class WorkerRunner:
 
                         frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                        # Speed flare & twilight atmosphere
+                        # Speed flare & twilight atmosphere progression
                         flare_t = (seq_idx * 5.0) + (t_chunk * 5.0)
                         flare = 8.0 * np.sin(grid_x * 0.01 + flare_t * 2.0) * (1.0 - grid_y / height)
                         frame_f = frame.astype(np.float32)
@@ -1176,7 +1182,7 @@ def main():
     parser.add_argument(
         "--max-idle-seconds",
         type=int,
-        default=30,
+        default=600,
         help="Max idle time before runner terminates",
     )
     args = parser.parse_args()

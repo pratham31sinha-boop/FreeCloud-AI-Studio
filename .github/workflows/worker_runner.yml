@@ -95,4 +95,4 @@ jobs:
             --job-id "$FREECLOUD_JOB_ID" \
             --worker-id "$WORKER_ID" \
             --model "${{ inputs.model_name }}" \
-            --max-idle-seconds 45
+            --max-idle-seconds 600

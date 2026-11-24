@@ -104,21 +104,22 @@ class WorkerOrchestrator:
         )
         self.jobs[job_id] = record
 
-        # Pre-synthesize Master Character Anchor and Progressive Act Anchors so all runners have them ready immediately
+        # Pre-synthesize Master Character Anchor and initial Act 0 Anchor
         clean_story = (request.story_prompt or "").strip()
         m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
         try:
             from backend.storage.manager import storage_manager
             storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
-            for chk in chunks:
-                storage_manager.get_or_create_act_anchor(
-                    job_id=job_id,
-                    seq_idx=chk.sequence_index,
-                    prompt=chk.prompt_segment,
-                    seed=m_seed,
-                )
+            # Synthesize Act 0 initial anchor; subsequent Acts (1, 2, 3...) are dynamically extracted
+            # from the exact last frame of each completed clip using Extend Clip Technology
+            storage_manager.get_or_create_act_anchor(
+                job_id=job_id,
+                seq_idx=0,
+                prompt=chunks[0].prompt_segment if chunks else clean_story,
+                seed=m_seed,
+            )
         except Exception as anchor_err:
-            logger.warning("Could not pre-synthesize master or act anchors: %s", anchor_err)
+            logger.warning("Could not pre-synthesize initial master anchor: %s", anchor_err)
 
         # Dispatch workers via GitHub Actions or local dispatcher
         record.status = JobStatus.ORCHESTRATING
@@ -190,6 +191,15 @@ class WorkerOrchestrator:
 
             for chunk in job.chunks:
                 if chunk.status in (TaskChunkStatus.PENDING, TaskChunkStatus.RETRYING):
+                    # Extend Clip Technology (Sequential Video Extension):
+                    # Chunk 0 is leased immediately to the first available cloud runner.
+                    # Chunk N (N > 0) can ONLY be leased once Chunk N-1 has COMPLETED
+                    # and its final frame has been extracted and set as anchor/N.
+                    if chunk.sequence_index > 0:
+                        prev_chunk = next((c for c in job.chunks if c.sequence_index == chunk.sequence_index - 1), None)
+                        if not prev_chunk or prev_chunk.status != TaskChunkStatus.COMPLETED:
+                            continue  # Wait for preceding clip to finish and hand off its last frame
+
                     # Lease this chunk
                     now = time.time()
                     chunk.status = TaskChunkStatus.ASSIGNED
@@ -270,6 +280,27 @@ class WorkerOrchestrator:
             **req.continuity_metrics,
         }
         chunk.updated_at = now
+
+        # EXTEND CLIP TECHNOLOGY:
+        # Extract the exact last frame of this completed chunk to serve as the starting anchor for the next chunk!
+        next_seq = chunk.sequence_index + 1
+        next_chunk = next((c for c in job.chunks if c.sequence_index == next_seq), None)
+        if next_chunk:
+            artifact_file = storage_manager.get_chunk_artifact(job.job_id, chunk.chunk_id)
+            if artifact_file and artifact_file.is_file():
+                success = self._extract_last_frame_for_extension(
+                    artifact_path=artifact_file,
+                    job_id=job.job_id,
+                    next_seq=next_seq,
+                )
+                if success:
+                    next_chunk.anchor_frame_url = f"/api/v1/jobs/{job.job_id}/anchor/{next_seq}"
+                    logger.info(
+                        "Extend Clip Technology: Handed off exact last frame of Chunk %d to Chunk %d (%s)",
+                        chunk.sequence_index,
+                        next_seq,
+                        next_chunk.anchor_frame_url,
+                    )
 
         worker = self.workers.get(req.worker_id)
         if worker:
@@ -363,6 +394,32 @@ class WorkerOrchestrator:
                         chunk.status = TaskChunkStatus.RETRYING
                         chunk.assigned_worker_id = None
                         chunk.lease_expires_at = None
+
+    def _extract_last_frame_for_extension(self, artifact_path: Path, job_id: str, next_seq: int) -> bool:
+        """Extract the exact ending frame of a completed clip to serve as the starting anchor for video extension."""
+        try:
+            import cv2
+            cap = cv2.VideoCapture(str(artifact_path))
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if frame_count <= 0:
+                cap.release()
+                return False
+            cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, frame_count - 1))
+            ret, last_frame = cap.read()
+            cap.release()
+            if ret and last_frame is not None and last_frame.size > 0:
+                target_path = storage_manager.artifacts_dir / f"{job_id}_anchor_act_{next_seq}.png"
+                cv2.imwrite(str(target_path), last_frame)
+                logger.info(
+                    "Extend Clip Technology: Extracted last frame of %s (frame %d/%d) -> %s",
+                    artifact_path.name,
+                    frame_count,
+                    target_path.name,
+                )
+                return True
+        except Exception as exc:
+            logger.error("Error extracting last frame for video extension from %s: %s", artifact_path, exc)
+        return False
 
     def _assemble_final_video(self, job: JobRecord) -> None:
         """Execute final coherent video assembly from completed chunks using FFmpeg and OpenCV."""

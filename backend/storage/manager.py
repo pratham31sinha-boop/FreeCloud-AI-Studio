@@ -194,9 +194,20 @@ class StorageManager:
     def get_or_create_act_anchor(
         self, job_id: str, seq_idx: int, prompt: str, seed: int = 42, width: int = 640, height: int = 360
     ) -> Path:
-        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk."""
+        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk.
+        
+        For seq_idx > 0, this returns the exact final frame extracted from the previous chunk
+        (Extend Clip Technology).
+        """
         anchor_path = self.artifacts_dir / f"{job_id}_anchor_act_{seq_idx}.png"
         if anchor_path.is_file() and anchor_path.stat().st_size > 1000:
+            return anchor_path
+
+        # If seq_idx > 0 and no extended anchor is available yet, fall back to master anchor
+        if seq_idx > 0:
+            master_anchor = self.get_or_create_master_anchor(job_id=job_id, prompt=prompt, seed=seed, width=width, height=height)
+            import shutil
+            shutil.copy2(master_anchor, anchor_path)
             return anchor_path
 
         import urllib.request
