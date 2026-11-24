@@ -904,23 +904,26 @@ class WorkerRunner:
 
         try:
             if motion_frames and len(motion_frames) >= 12:
-                logger.info("Using %d authentic cloud diffusion motion frames for Act %d/%d", len(motion_frames), seq_idx + 1, total_chunks)
+                logger.info(
+                    "Using %d authentic cloud diffusion motion frames with monotonic temporal interpolation for Act %d/%d (Strictly ZERO repetition)",
+                    len(motion_frames), seq_idx + 1, total_chunks,
+                )
                 n_m = len(motion_frames)
-                k_blend = min(12, max(4, n_m // 5))
 
                 for idx in range(total_frames):
+                    # Monotonic timeline progression within this act (0.0 to 1.0 strictly once, NO looping)
                     t_chunk = idx / max(1, total_frames - 1)
-                    t_global = (seq_idx + t_chunk) / total_chunks
-                    global_frame_idx = seq_idx * total_frames + idx
-                    base_idx = global_frame_idx % n_m
+                    t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    if base_idx >= n_m - k_blend:
-                        blend_alpha = (base_idx - (n_m - k_blend)) / float(k_blend)
-                        f1 = motion_frames[base_idx]
-                        f2 = motion_frames[base_idx - (n_m - k_blend)]
-                        raw_f = cv2.addWeighted(f1, 1.0 - blend_alpha, f2, blend_alpha, 0)
-                    else:
-                        raw_f = motion_frames[base_idx]
+                    # Smooth monotonic temporal stretching across motion frames (ZERO REPETITION)
+                    pos = t_chunk * (n_m - 1)
+                    i0 = int(pos)
+                    i1 = min(n_m - 1, i0 + 1)
+                    blend_alpha = float(pos - i0)
+
+                    f1 = motion_frames[i0]
+                    f2 = motion_frames[i1]
+                    raw_f = cv2.addWeighted(f1, 1.0 - blend_alpha, f2, blend_alpha, 0)
 
                     if (raw_f.shape[1], raw_f.shape[0]) != (width, height):
                         raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
