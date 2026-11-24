@@ -915,8 +915,8 @@ class WorkerRunner:
                     t_chunk = idx / max(1, total_frames - 1)
                     t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # Smooth monotonic temporal stretching across motion frames (ZERO REPETITION)
-                    pos = t_chunk * (n_m - 1)
+                    # Seamless progressive slice of global timeline (Chunk 1 continues into Chunk 2, etc.)
+                    pos = t_global * (n_m - 1)
                     i0 = int(pos)
                     i1 = min(n_m - 1, i0 + 1)
                     blend_alpha = float(pos - i0)
@@ -928,9 +928,9 @@ class WorkerRunner:
                     if (raw_f.shape[1], raw_f.shape[0]) != (width, height):
                         raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
 
-                    curr_zoom = 1.00 + 0.16 * t_global
-                    cx = (width / 2.0) + (t_global * 38.0)
-                    cy = (height / 2.0) - (t_global * 12.0)
+                    curr_zoom = 1.00 + 0.18 * t_global
+                    cx = (width / 2.0) + (t_global * 42.0)
+                    cy = (height / 2.0) - (t_global * 14.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -952,40 +952,38 @@ class WorkerRunner:
                     writer.write(frame_graded)
             else:
                 logger.info(
-                    "[%s Engine] Activating Anchor Keyframe continuous forward motion synthesis for Act %d/%d",
+                    "[%s Engine] Activating Anchor Keyframe continuous forward motion synthesis for Act %d/%d (Continuous Seamless Journey)",
                     model_name.upper(), seq_idx + 1, total_chunks,
                 )
                 kf1 = anchor_frame
                 grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
 
                 for idx in range(total_frames):
-                    # Monotonic timeline progression within this act (0.0 to 1.0 strictly once)
+                    # Monotonic timeline within this act
                     t_chunk = idx / max(1, total_frames - 1)
-                    # Global continuous timeline across the entire video
+                    # Global continuous timeline across the ENTIRE video (0.0 to 1.0)
                     t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # Strictly forward progressive storyline motion with ZERO repeating cycles:
-                    if seq_idx == 0:
-                        # Act 1 (Emergence): Stealthy creeping prowl out of the shadows into the light
-                        prowl_factor = np.sin(0.5 * np.pi * t_chunk)  # monotonic 0.0 -> 1.0
-                        dx = 6.0 * prowl_factor * (grid_y / height)
-                        dy = -1.6 * np.sin(np.pi * t_chunk) * (1.0 - grid_y / height)
-                    elif seq_idx == 1:
-                        # Act 2 (Progression): Forward stride across wet mossy riverstones, water spray
-                        dx = 9.0 * t_chunk * (grid_y / height)
-                        dy = -2.8 * np.sin(np.pi * t_chunk) * (grid_y / height)
-                    elif seq_idx == 2:
-                        # Act 3 (Climactic Snarl): Drop into low predatory crouch, jaw opens baring sharp fangs
-                        snarl_jaw = np.sin(np.pi * t_chunk)
-                        crouch_body = np.sin(0.5 * np.pi * t_chunk)
-                        dx = 2.0 * (1.0 - t_chunk) * (grid_y / height)
-                        mouth_mask = np.clip((grid_y - height * 0.35) / (height * 0.4), 0.0, 1.0)
-                        dy = 2.0 * crouch_body * (1.0 - grid_y / height) + 7.5 * snarl_jaw * mouth_mask
-                    else:
-                        # Act 4 (Grand Finale): Explosive acceleration into majestic full gallop through glowing flora
-                        sprint_accel = t_chunk ** 1.35
-                        dx = 14.0 * sprint_accel * (grid_y / height)
-                        dy = 3.6 * np.sin(np.pi * t_chunk) * (grid_y / height)
+                    # 1. Forward Progressive Displacement across the ENTIRE storyline (Strictly monotonic, NEVER resets between clips)
+                    # Leopard starts at 0.0 in clip 1, reaches 5.7 at end of clip 1, starts at 5.7 in clip 2, etc.
+                    dx_forward = 32.0 * (t_global ** 1.25) * (grid_y / height)
+
+                    # 2. Continuous Predatory Stride Cycles across the entire 21s (3.5 full continuous strides)
+                    # Strictly continuous across chunk boundaries (zero jumping between servers)
+                    theta_stride = 2.0 * np.pi * 3.5 * t_global
+                    stride_dy = -2.6 * np.sin(theta_stride) * (grid_y / height)
+                    stride_lateral_dx = 1.8 * np.cos(theta_stride) * (grid_y / height)
+
+                    # 3. Continuous Climactic Snarl (Gaussian envelope centered at t_global = 0.62 in Act 3)
+                    # Smooth everywhere with zero boundary discontinuities
+                    snarl_env = np.exp(-((t_global - 0.62) ** 2) / (2.0 * (0.075 ** 2)))
+                    mouth_mask = np.clip((grid_y - height * 0.35) / (height * 0.42), 0.0, 1.0)
+                    snarl_dy = 8.5 * snarl_env * mouth_mask
+                    crouch_dy = 2.2 * snarl_env * (1.0 - grid_y / height)
+
+                    # Total Continuous Displacement Field (Exact sub-pixel continuity across chunk seams)
+                    dx = dx_forward + stride_lateral_dx
+                    dy = stride_dy + snarl_dy + crouch_dy
 
                     map_x = (grid_x + dx).astype(np.float32)
                     map_y = (grid_y + dy).astype(np.float32)
@@ -993,9 +991,9 @@ class WorkerRunner:
                     warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
                     # Continuous unified camera motion path across all 4 servers (monotonic forward tracking)
-                    curr_zoom = 1.00 + 0.16 * t_global
-                    cx = (width / 2.0) + (t_global * 38.0)
-                    cy = (height / 2.0) - (t_global * 12.0)
+                    curr_zoom = 1.00 + 0.18 * t_global
+                    cx = (width / 2.0) + (t_global * 42.0)
+                    cy = (height / 2.0) - (t_global * 14.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
