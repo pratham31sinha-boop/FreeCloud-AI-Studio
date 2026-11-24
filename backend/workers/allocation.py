@@ -89,12 +89,21 @@ def plan_task_chunks(
     if not prompt_sentences:
         prompt_sentences = [request.story_prompt]
 
+    # Progressive 4-Act Storyline Continuation (eliminates looping, ensures real narrative progression)
+    act_beats = [
+        "Act 1 (Emergence): The subject stealthily emerges from deep misty rainforest shadows into the light, initiating a smooth predatory prowl, glowing emerald eyes scanning ahead",
+        "Act 2 (Progression): Continuing forward through the terrain, stepping across glistening wet mossy riverstones, water droplets flying off paws, sleek fur rippling with continuous momentum",
+        "Act 3 (Climactic Tension): Intense moment of focus, lowering into an aggressive stance, baring sharp fangs in a low territorial snarl, breath visible in humid night air, muscles tensed",
+        "Act 4 (Grand Finale): Powerful surge forward into a majestic full-speed stride, accelerating past luminous bioluminescent flora into the deep jungle canopy",
+    ]
+
     for idx in range(calculated_chunks):
         end_time = min(total_seconds, current_time + chunk_duration)
-        # Unified continuous scene prompt across all distributed servers
+        beat_text = act_beats[idx % len(act_beats)]
+        # Unified continuous scene prompt with progressive act continuation
         scene_prompt = (
-            f"[Part {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
-            f"{request.story_prompt.strip()}"
+            f"[Act {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
+            f"{request.story_prompt.strip()} -- {beat_text}"
         )
 
         chunk = TaskChunk(

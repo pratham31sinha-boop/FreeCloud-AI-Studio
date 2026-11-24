@@ -746,7 +746,7 @@ class WorkerRunner:
             raise RuntimeError(f"Could not open VideoWriter for {temp_visual_path}")
 
         raw_prompt = prompt or "Cinematic AI Masterpiece"
-        clean_prompt = re.sub(r"\[(Scene|Part)\s*\d+/\d+\s*\|\s*[\d\.]+s-[\d\.]+s\]", "", raw_prompt).strip()
+        clean_prompt = re.sub(r"\[(Scene|Part|Act)\s*\d+/\d+\s*\|\s*[\d\.]+s-[\d\.]+s\]", "", raw_prompt).strip()
         if not clean_prompt:
             clean_prompt = "Cinematic atmospheric masterpiece, 8k resolution, highly detailed"
 
@@ -754,9 +754,11 @@ class WorkerRunner:
         total_chunks = max(1, lease.get("total_chunks", 4) if lease else 4)
         anime_style = (lease.get("anime_style") or "").lower() if lease else ""
         
-        # Unified master seed tied to the job identity so all 4 servers share the exact same scene & subject
+        # Base seed from job identity
         job_id = lease.get("job_id", "") if lease else ""
-        seed_base = abs(hash(f"{job_id}_{clean_prompt}")) % 1000000
+        seed_base = abs(hash(f"{job_id}_{clean_prompt[:40]}")) % 1000000
+        # Dedicated act seed ensures every server renders a unique progressive narrative stage
+        act_seed = (seed_base + seq_idx * 317) % 1000000
 
         # Style-specific aesthetic conditioning
         if any(s in anime_style for s in ("shinkai", "ghibli", "ufotable", "mappa", "anime")):
@@ -764,28 +766,28 @@ class WorkerRunner:
         elif "cyberpunk" in clean_prompt.lower():
             style_enhancer = "cyberpunk aesthetic, wet neon reflections, volumetric fog, Unreal Engine 5 render, ray tracing, 8k UHD"
         else:
-            style_enhancer = "photorealistic, hyperrealistic, cinematic lighting, 8k UHD, masterpiece, 35mm photograph, octane render"
+            style_enhancer = "photorealistic, hyperrealistic, cinematic lighting, 8k National Geographic documentary, RED camera, 35mm anamorphic lens, octane render"
 
-        # Unified single-shot prompt shared across all 4 servers
-        master_shot_prompt = f"{clean_prompt}, continuous cinematic tracking camera, forward movement, seamless physical motion, {style_enhancer}"
+        # Unique progressive act prompt for each server
+        act_prompt = f"{clean_prompt}, {style_enhancer}"
 
         logger.info(
-            "Rendering Server Segment %d/%d (Chunk %s) for unified single video: %s",
-            seq_idx + 1, total_chunks, chunk_id, master_shot_prompt[:80],
+            "Rendering Server Progressive Act %d/%d (Chunk %s) with unique continuation: %s",
+            seq_idx + 1, total_chunks, chunk_id, act_prompt[:80],
         )
 
         # Step 1: Attempt Cloud Video Diffusion Engine (Lightricks/ltx-video-distilled)
-        motion_frames = self._synthesize_cloud_motion_video(master_shot_prompt, seed=seed_base, width=512, height=384)
+        motion_frames = self._synthesize_cloud_motion_video(act_prompt, seed=act_seed, width=512, height=384)
 
         try:
             if motion_frames and len(motion_frames) >= 12:
-                logger.info("Using %d authentic cloud diffusion motion frames for Server Segment %d/%d", len(motion_frames), seq_idx + 1, total_chunks)
+                logger.info("Using %d authentic cloud diffusion motion frames for Act %d/%d", len(motion_frames), seq_idx + 1, total_chunks)
                 n_m = len(motion_frames)
                 k_blend = min(12, max(4, n_m // 5))
 
                 for idx in range(total_frames):
                     # Continuous global timeline across all 4 servers
-                    t_chunk = idx / max(1, total_frames)
+                    t_chunk = idx / max(1, total_frames - 1)
                     t_global = (seq_idx + t_chunk) / total_chunks
 
                     # Strictly forward-only continuous cyclic motion (NEVER rewinds)
@@ -804,9 +806,9 @@ class WorkerRunner:
                         raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
 
                     # Continuous unified camera motion path across the entire video
-                    curr_zoom = 1.00 + 0.08 * t_global
-                    cx = (width / 2.0) + (t_global * 28.0)
-                    cy = (height / 2.0) - (t_global * 8.0)
+                    curr_zoom = 1.00 + 0.12 * t_global
+                    cx = (width / 2.0) + (t_global * 35.0)
+                    cy = (height / 2.0) - (t_global * 10.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -814,48 +816,48 @@ class WorkerRunner:
 
                     frame = cv2.warpAffine(raw_f, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                    # Subtle cinematic lighting / exposure breathing
-                    breathe = 1.0 + 0.015 * np.sin(t_global * 6.0 * np.pi)
-                    if breathe != 1.0:
-                        frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
+                    # High-end cinematic color grading & rich contrast
+                    frame_f = frame.astype(np.float32) / 255.0
+                    frame_graded = np.clip(np.power(frame_f, 0.94) * 1.06 * 255.0, 0, 255).astype(np.uint8)
 
                     # Cinematic anamorphic widescreen letterboxing (2.35:1 Hollywood aspect ratio)
-                    frame[:20, :] = 0
-                    frame[-22:, :] = 0
+                    frame_graded[:20, :] = 0
+                    frame_graded[-22:, :] = 0
 
-                    writer.write(frame)
+                    writer.write(frame_graded)
             else:
-                logger.info("Activating continuous non-rigid physical motion synthesis for Server Segment %d/%d", seq_idx + 1, total_chunks)
-                kf1 = self._fetch_neural_diffusion_frame(master_shot_prompt, seed=seed_base, width=width, height=height)
+                logger.info("Activating progressive non-rigid physical motion synthesis for Act %d/%d", seq_idx + 1, total_chunks)
+                kf1 = self._fetch_neural_diffusion_frame(act_prompt, seed=act_seed, width=width, height=height)
                 if kf1 is None:
-                    kf1 = self._synthesize_failsafe_latent_frame(master_shot_prompt, seed=seed_base, width=width, height=height)
+                    kf1 = self._synthesize_failsafe_latent_frame(act_prompt, seed=act_seed, width=width, height=height)
 
                 grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
 
                 for idx in range(total_frames):
                     # Continuous global timeline across all 4 servers
-                    t_chunk = idx / max(1, total_frames)
+                    t_chunk = idx / max(1, total_frames - 1)
                     t_global = (seq_idx + t_chunk) / total_chunks
 
-                    # Continuous physical stride and muscular breathing progressing strictly forward
-                    # (advances continuously across server boundaries with zero seams and zero rewind)
-                    stride_freq = total_chunks * 2.5
-                    stride_cycle = np.sin(2.0 * np.pi * stride_freq * t_global)
-                    stride_dy = np.cos(2.0 * np.pi * stride_freq * t_global)
+                    # Continuous progressive forward stride & muscular breathing
+                    # 2 complete anatomical strides per act = 8 unique continuous strides across the entire video
+                    stride_phase = 2.0 * np.pi * (seq_idx * 2.0 + t_chunk * 2.0)
+                    dx = 4.2 * np.sin(stride_phase) * (grid_y / height)
+                    dy = 2.4 * np.cos(stride_phase) * (1.0 - grid_y / height)
 
-                    # Non-rigid pixel deformation: paws stride, torso breathes, fur/atmosphere moves
-                    dx = 4.5 * stride_cycle * (grid_y / height)
-                    dy = 2.5 * stride_dy * (1.0 - grid_y / height)
+                    # Act 3 dramatic climax: snarling jaw opening and muscle contraction
+                    if seq_idx == 2:
+                        snarl_factor = np.sin(np.pi * t_chunk)
+                        dy += 4.5 * snarl_factor * (grid_y / height)
 
                     map_x = (grid_x + dx).astype(np.float32)
                     map_y = (grid_y + dy).astype(np.float32)
 
                     warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
-                    # Continuous camera progression from t_global = 0.0 to 1.0
-                    curr_zoom = 1.00 + 0.08 * t_global
-                    cx = (width / 2.0) + (t_global * 28.0)
-                    cy = (height / 2.0) - (t_global * 8.0)
+                    # Continuous camera progression from t_global = 0.0 to 1.0 (continuous forward travel)
+                    curr_zoom = 1.00 + 0.12 * t_global
+                    cx = (width / 2.0) + (t_global * 35.0)
+                    cy = (height / 2.0) - (t_global * 10.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -863,16 +865,15 @@ class WorkerRunner:
 
                     frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                    # Subtle continuous lighting breathing
-                    breathe = 1.0 + 0.015 * np.sin(t_global * 6.0 * np.pi)
-                    if breathe != 1.0:
-                        frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
+                    # High-end cinematic color grading & rich contrast
+                    frame_f = frame.astype(np.float32) / 255.0
+                    frame_graded = np.clip(np.power(frame_f, 0.94) * 1.06 * 255.0, 0, 255).astype(np.uint8)
 
                     # Cinematic anamorphic widescreen letterboxing (2.35:1 Hollywood aspect ratio)
-                    frame[:20, :] = 0
-                    frame[-22:, :] = 0
+                    frame_graded[:20, :] = 0
+                    frame_graded[-22:, :] = 0
 
-                    writer.write(frame)
+                    writer.write(frame_graded)
         finally:
             writer.release()
 
