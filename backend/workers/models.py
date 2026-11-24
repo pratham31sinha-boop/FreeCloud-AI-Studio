@@ -45,6 +45,14 @@ class AnimeStyle(str, Enum):
     KYOANI_SOFT = "kyoani_soft"
     MINIMAX_H3_CINEMATIC = "minimax_h3_cinematic"
     MINIMAX_H3_ANIME = "minimax_h3_anime"
+    WAN_2_1_REALISTIC = "wan_2_1_realistic"
+    HUNYUAN_CINEMATIC = "hunyuan_cinematic"
+
+
+class ModelEngine(str, Enum):
+    WAN_2_1 = "wan_2_1"
+    MINIMAX_H3 = "minimax_h3"
+    HUNYUAN_VIDEO = "hunyuan_video"
 
 
 class TaskChunk(BaseModel):
@@ -58,6 +66,9 @@ class TaskChunk(BaseModel):
     duration_sec: float
     prompt_segment: str
     anime_style: str
+    model_name: Optional[str] = "wan_2_1"
+    anchor_frame_url: Optional[str] = None
+    master_seed: Optional[int] = None
     character_ids: List[str] = Field(default_factory=list)
     motion_reference_id: Optional[str] = None
     input_frame_range: Optional[tuple[int, int]] = None
@@ -103,6 +114,10 @@ class JobRequest(BaseModel):
         default=1.0, ge=0.01, le=15.0, description="Target output duration in minutes"
     )
     anime_style: AnimeStyle = AnimeStyle.SHINKAI_CINEMATIC
+    model_name: str = Field(
+        default="wan_2_1",
+        description="Foundation video generation engine: wan_2_1, minimax_h3, or hunyuan_video",
+    )
     character_ids: List[str] = Field(
         default_factory=lambda: ["jagdhatri_main", "jash_lead"]
     )

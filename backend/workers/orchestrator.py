@@ -107,12 +107,13 @@ class WorkerOrchestrator:
         # Dispatch workers via GitHub Actions or local dispatcher
         record.status = JobStatus.ORCHESTRATING
         record.stage_message = f"Orchestrating {target_workers} workers"
+        model_to_use = getattr(request, "model_name", "wan_2_1")
         dispatch_result = await self.dispatcher.dispatch_workers(
             job_id=job_id,
             worker_count=target_workers,
             extra_inputs={
                 "duration_mins": str(request.duration_minutes),
-                "model_name": "minimax_h3",
+                "model_name": model_to_use,
             },
         )
         logger.info("Job %s worker dispatch response: %s", job_id, dispatch_result)
@@ -201,6 +202,9 @@ class WorkerOrchestrator:
                                 )
                             )
 
+                    clean_story = (job.request.story_prompt or "").strip()
+                    m_seed = abs(hash(f"{job.job_id}_{clean_story[:40]}")) % 1000000
+
                     return TaskLeaseResponse(
                         has_task=True,
                         job_id=job.job_id,
@@ -211,6 +215,9 @@ class WorkerOrchestrator:
                         duration_sec=chunk.duration_sec,
                         prompt_segment=chunk.prompt_segment,
                         anime_style=chunk.anime_style,
+                        model_name=getattr(chunk, "model_name", getattr(job.request, "model_name", "wan_2_1")),
+                        anchor_frame_url=f"/api/v1/jobs/{job.job_id}/master-anchor",
+                        master_seed=m_seed,
                         characters=char_bundles,
                         total_chunks=len(job.chunks),
                         total_duration_sec=float(job.request.duration_minutes * 60.0),

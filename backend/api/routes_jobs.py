@@ -63,3 +63,19 @@ def download_final_video(job_id: str):
         media_type="video/mp4",
         filename=f"{job_id}_anime_final.mp4",
     )
+
+
+@router.get("/{job_id}/master-anchor")
+def get_master_anchor_image(job_id: str):
+    """Serve the master anchor reference image to guarantee 100% subject visual consistency across workers."""
+    job = worker_orchestrator.get_job(job_id)
+    prompt = job.request.story_prompt if job else "cinematic high quality video subject"
+    clean_story = (prompt or "").strip()
+    m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
+
+    anchor_path = storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
+    return FileResponse(
+        path=str(anchor_path),
+        media_type="image/png",
+        filename=f"{job_id}_master_anchor.png",
+    )

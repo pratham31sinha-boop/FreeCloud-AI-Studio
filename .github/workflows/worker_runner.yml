@@ -22,9 +22,9 @@ on:
         default: "1.0"
         type: string
       model_name:
-        description: "AI Video Generation Model (e.g. minimax_h3, animatediff)"
+        description: "AI Video Generation Model (wan_2_1, minimax_h3, hunyuan_video)"
         required: false
-        default: "minimax_h3"
+        default: "wan_2_1"
         type: string
 
 permissions:

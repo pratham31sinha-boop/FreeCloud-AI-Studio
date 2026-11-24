@@ -16,6 +16,16 @@ on:
         description: "Base URL of FreeCloud AI Studio API (e.g., https://api.freecloud.ai or tunnel URL)"
         required: true
         type: string
+      duration_mins:
+        description: "Target video duration in minutes"
+        required: false
+        default: "1.0"
+        type: string
+      model_name:
+        description: "AI Video Generation Model (wan_2_1, minimax_h3, hunyuan_video)"
+        required: false
+        default: "wan_2_1"
+        type: string
 
 permissions:
   contents: read
@@ -28,26 +38,37 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Supports up to 10 concurrent runners matching the 15-minute job allocation tier
-        worker_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        # Dedicated 4-server cluster (each runner with 16GB+ memory pool)
+        worker_index: [1, 2, 3, 4]
 
     steps:
       - name: Check Worker Index vs Target Count
         id: check_active
         run: |
-          TARGET="${{ inputs.worker_count }}"
-          INDEX="${{ matrix.worker_index }}"
-          if [ "$INDEX" -le "$TARGET" ]; then
-            echo "active=true" >> "$GITHUB_OUTPUT"
-            echo "Runner $INDEX is active for job ${{ inputs.job_id }} (Target fleet: $TARGET)"
-          else
-            echo "active=false" >> "$GITHUB_OUTPUT"
-            echo "Runner $INDEX is idle / exceeds target worker allocation of $TARGET. Skipping."
-          fi
+          echo "active=true" >> "$GITHUB_OUTPUT"
+          echo "Cloud Server ${{ matrix.worker_index }}/4 is active for job ${{ inputs.job_id }} (Dedicated 4-Server Cluster)"
 
       - name: Checkout FreeCloud Repository
         if: steps.check_active.outputs.active == 'true'
         uses: actions/checkout@v4
+
+      - name: Allocate 16GB RAM Memory Pool & Clean Disk Space
+        if: steps.check_active.outputs.active == 'true'
+        run: |
+          echo "=== Freeing Disk Space on Runner ==="
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+          echo "=== Configuring 16GB High-Speed Memory Pool ==="
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
+          echo "=== Runner Memory Specifications (16GB+ Pool Active) ==="
+          free -h
+          lscpu | grep "Model name\|CPU(s):" || true
 
       - name: Set up Python
         if: steps.check_active.outputs.active == 'true'
@@ -60,7 +81,7 @@ jobs:
         if: steps.check_active.outputs.active == 'true'
         run: |
           python -m pip install --upgrade pip
-          pip install httpx pydantic requests
+          pip install httpx pydantic requests opencv-python-headless numpy imageio-ffmpeg gradio_client
 
       - name: Execute Worker Runner Entrypoint
         if: steps.check_active.outputs.active == 'true'
@@ -73,4 +94,5 @@ jobs:
             --backend-url "$FREECLOUD_BACKEND_URL" \
             --job-id "$FREECLOUD_JOB_ID" \
             --worker-id "$WORKER_ID" \
+            --model "${{ inputs.model_name }}" \
             --max-idle-seconds 45

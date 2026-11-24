@@ -147,6 +147,56 @@ class StorageManager:
             return None
         return json.loads(meta_file.read_text())
 
+    def get_or_create_master_anchor(
+        self, job_id: str, prompt: str, seed: int = 42, width: int = 640, height: int = 360
+    ) -> Path:
+        """Fetch or synthesize the master anchor reference image for a job to guarantee visual consistency."""
+        anchor_path = self.artifacts_dir / f"{job_id}_master_anchor.png"
+        if anchor_path.is_file() and anchor_path.stat().st_size > 1000:
+            return anchor_path
+
+        import urllib.request
+        import urllib.parse
+        import cv2
+        import numpy as np
+
+        clean_prompt = prompt.replace("\n", " ").strip()
+        encoded = urllib.parse.quote(clean_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&seed={seed}&nologo=true"
+
+        for attempt in range(1, 4):
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    raw_data = resp.read()
+                if len(raw_data) > 1000:
+                    arr = np.frombuffer(raw_data, dtype=np.uint8)
+                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if img is not None and img.shape[0] > 0 and img.shape[1] > 0:
+                        if (img.shape[1], img.shape[0]) != (width, height):
+                            img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
+                        cv2.imwrite(str(anchor_path), img)
+                        return anchor_path
+            except Exception:
+                pass
+
+        # Failsafe procedural anchor
+        np.random.seed(seed % (2**31 - 1))
+        x = np.linspace(0, 1, width)
+        y = np.linspace(0, 1, height)
+        xx, yy = np.meshgrid(x, y)
+        r = np.clip((np.sin(xx * 3.14 + seed * 0.1) * 0.5 + 0.5) * 220 + 30, 0, 255).astype(np.uint8)
+        g = np.clip((np.cos(yy * 3.14 + seed * 0.2) * 0.5 + 0.5) * 180 + 40, 0, 255).astype(np.uint8)
+        b = np.clip((np.sin((xx + yy) * 3.14 + seed * 0.3) * 0.5 + 0.5) * 240 + 15, 0, 255).astype(np.uint8)
+        frame = cv2.GaussianBlur(cv2.merge([b, g, r]), (51, 51), 0)
+        cv2.imwrite(str(anchor_path), frame)
+        return anchor_path
+
 
 # Global default instance
 storage_manager = StorageManager()

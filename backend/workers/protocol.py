@@ -68,6 +68,9 @@ class TaskLeaseResponse(BaseModel):
     duration_sec: Optional[float] = None
     prompt_segment: Optional[str] = None
     anime_style: Optional[str] = None
+    model_name: Optional[str] = "wan_2_1"
+    anchor_frame_url: Optional[str] = None
+    master_seed: Optional[int] = None
     characters: List[CharacterReferenceBundle] = Field(default_factory=list)
     motion_guidance: Optional[Dict[str, Any]] = None
     total_chunks: Optional[int] = 4
