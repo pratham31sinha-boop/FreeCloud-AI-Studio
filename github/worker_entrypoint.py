@@ -371,8 +371,8 @@ class WorkerRunner:
     def _acquire_master_anchor_frame(
         self,
         lease: Optional[Dict[str, Any]],
-        width: int = 640,
-        height: int = 360,
+        width: int = 1920,
+        height: int = 1080,
     ) -> Any:
         """Acquire the single master character anchor image to guarantee 100% subject consistency across all workers."""
         import cv2
@@ -642,8 +642,8 @@ class WorkerRunner:
         self,
         prompt: str,
         seed: int,
-        width: int = 640,
-        height: int = 360,
+        width: int = 1920,
+        height: int = 1080,
         retries: int = 6,
     ) -> Optional[Any]:
         """Fetch a genuine neural diffusion frame from the cloud AI inference endpoint."""
@@ -695,8 +695,8 @@ class WorkerRunner:
         self,
         prompt: str,
         seed: int,
-        width: int = 640,
-        height: int = 360,
+        width: int = 1920,
+        height: int = 1080,
     ) -> Any:
         """Procedural neural latent representation used only if cloud inference endpoint is unreachable."""
         import numpy as np
@@ -862,7 +862,10 @@ class WorkerRunner:
         import numpy as np
         import re
 
-        width, height = 640, 360
+        width, height = 1920, 1080
+        scale_factor = width / 640.0
+        bar_top = int(round(height * 0.055))
+        bar_bottom = int(round(height * 0.060))
         temp_visual_path = f"/tmp/{chunk_id}_visual_temp.mp4"
         temp_audio_path = f"/tmp/{chunk_id}_audio_temp.wav"
 
@@ -960,8 +963,8 @@ class WorkerRunner:
                     else:
                         frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
 
-                    frame_graded[:20, :] = 0
-                    frame_graded[-22:, :] = 0
+                    frame_graded[:bar_top, :] = 0
+                    frame_graded[-bar_bottom:, :] = 0
                     writer.write(frame_graded)
             else:
                 logger.info(
@@ -983,25 +986,25 @@ class WorkerRunner:
                             t_chunk = (idx + 1) / float(total_frames)
                         t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                        # 1. High-speed road asphalt translation & motion blur
-                        speed_dx = 24.0 * t_chunk * ((grid_y / height) ** 1.3)
+                        # 1. High-speed road asphalt translation & motion blur (1080p scaled)
+                        speed_dx = 24.0 * scale_factor * t_chunk * ((grid_y / height) ** 1.3)
 
-                        # 2. Engine & Chassis Harmonic Vibration (continuous phase)
-                        chassis_dy = 1.2 * np.sin(2.0 * np.pi * 10.0 * (t_chunk + seq_idx * 5.25))
+                        # 2. Engine & Chassis Harmonic Vibration (continuous phase, 1080p scaled)
+                        chassis_dy = 1.2 * scale_factor * np.sin(2.0 * np.pi * 10.0 * (t_chunk + seq_idx * 5.25))
 
-                        # 3. Dynamic Act-Specific Steering & Drift Motion (0-boundary continuous)
+                        # 3. Dynamic Act-Specific Steering & Drift Motion (0-boundary continuous, 1080p scaled)
                         drift_curve = np.sin(np.pi * t_chunk)
                         if seq_idx == 0:
-                            drift_dx = 8.0 * drift_curve
+                            drift_dx = 8.0 * scale_factor * drift_curve
                             drift_roll = 0.5 * drift_curve
                         elif seq_idx == 1:
-                            drift_dx = 14.0 * drift_curve
+                            drift_dx = 14.0 * scale_factor * drift_curve
                             drift_roll = 0.8 * drift_curve
                         elif seq_idx == 2:
-                            drift_dx = 22.0 * drift_curve * (grid_y / height)
+                            drift_dx = 22.0 * scale_factor * drift_curve * (grid_y / height)
                             drift_roll = 2.4 * drift_curve
                         else:
-                            drift_dx = 6.0 * drift_curve
+                            drift_dx = 6.0 * scale_factor * drift_curve
                             drift_roll = 0.4 * drift_curve
 
                         map_x = (grid_x + speed_dx + drift_dx).astype(np.float32)
@@ -1011,7 +1014,7 @@ class WorkerRunner:
 
                         # Subtle camera tracking breath (1.0 at cuts to prevent compounding zoom across extended clips)
                         curr_zoom = 1.00 + 0.03 * drift_curve
-                        cx = (width / 2.0) + (drift_curve * 12.0)
+                        cx = (width / 2.0) + (drift_curve * 12.0 * scale_factor)
                         cy = height / 2.0
 
                         M = cv2.getRotationMatrix2D((cx, cy), drift_roll, curr_zoom)
@@ -1022,7 +1025,7 @@ class WorkerRunner:
 
                         # Speed flare & twilight atmosphere progression
                         flare_t = (seq_idx * 5.0) + (t_chunk * 5.0)
-                        flare = 8.0 * np.sin(grid_x * 0.01 + flare_t * 2.0) * (1.0 - grid_y / height)
+                        flare = 8.0 * np.sin(grid_x * (0.01 / scale_factor) + flare_t * 2.0) * (1.0 - grid_y / height)
                         frame_f = frame.astype(np.float32)
                         frame_f[:, :, 2] += np.clip(flare * 1.5, 0, 18)
                         frame_f[:, :, 1] += np.clip(flare * 0.9, 0, 12)
@@ -1035,8 +1038,8 @@ class WorkerRunner:
                         else:
                             frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
 
-                        frame_graded[:20, :] = 0
-                        frame_graded[-22:, :] = 0
+                        frame_graded[:bar_top, :] = 0
+                        frame_graded[-bar_bottom:, :] = 0
                         writer.write(frame_graded)
                 else:
                     # Quadruped / Bipedal / General cinematic locomotion
@@ -1108,8 +1111,8 @@ class WorkerRunner:
                         else:
                             frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
 
-                        frame_graded[:20, :] = 0
-                        frame_graded[-22:, :] = 0
+                        frame_graded[:bar_top, :] = 0
+                        frame_graded[-bar_bottom:, :] = 0
                         writer.write(frame_graded)
 
 

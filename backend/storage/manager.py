@@ -148,7 +148,7 @@ class StorageManager:
         return json.loads(meta_file.read_text())
 
     def get_or_create_master_anchor(
-        self, job_id: str, prompt: str, seed: int = 42, width: int = 640, height: int = 360
+        self, job_id: str, prompt: str, seed: int = 42, width: int = 1920, height: int = 1080
     ) -> Path:
         """Fetch or synthesize the master anchor reference image for a job to guarantee visual consistency."""
         anchor_path = self.artifacts_dir / f"{job_id}_master_anchor.png"
@@ -162,10 +162,10 @@ class StorageManager:
 
         logger = logging.getLogger(__name__)
 
-        # High-res curated photographic anchors for specific domains
+        # High-res curated photographic anchors for specific domains (Full HD 1080p)
         p_lower = prompt.lower()
         if any(k in p_lower for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
-            photographic_url = "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1280"
+            photographic_url = "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1920"
             try:
                 req = urllib.request.Request(photographic_url, headers={"User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req, timeout=15) as resp:
@@ -174,7 +174,7 @@ class StorageManager:
                     if img is not None and img.shape[0] > 0 and img.shape[1] > 0:
                         resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
                         cv2.imwrite(str(anchor_path), resized)
-                        logger.info("Master vehicle anchor saved to %s", anchor_path)
+                        logger.info("Master vehicle anchor (1080p) saved to %s", anchor_path)
                         return anchor_path
             except Exception as exc:
                 logger.warning("Failed fetching photographic master anchor: %s", exc)
@@ -192,9 +192,9 @@ class StorageManager:
         return anchor_path
 
     def get_or_create_act_anchor(
-        self, job_id: str, seq_idx: int, prompt: str, seed: int = 42, width: int = 640, height: int = 360
+        self, job_id: str, seq_idx: int, prompt: str, seed: int = 42, width: int = 1920, height: int = 1080
     ) -> Path:
-        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk.
+        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk (Full HD 1080p).
         
         For seq_idx > 0, this returns the exact final frame extracted from the previous chunk
         (Extend Clip Technology).
@@ -218,13 +218,13 @@ class StorageManager:
         logger = logging.getLogger(__name__)
         p_lower = prompt.lower()
 
-        # Domain-specific progressive act sequences
+        # Domain-specific progressive act sequences (Full HD 1080p)
         if any(k in p_lower for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
             vehicle_acts = [
-                "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1280",  # Act 1: Launch at sunset
-                "https://images.pexels.com/photos/1545743/pexels-photo-1545743.jpeg?auto=compress&cs=tinysrgb&w=1280",   # Act 2: Coastal cruise
-                "https://images.pexels.com/photos/3802510/pexels-photo-3802510.jpeg?auto=compress&cs=tinysrgb&w=1280",   # Act 3: Hairpin drift
-                "https://images.pexels.com/photos/120049/pexels-photo-120049.jpeg?auto=compress&cs=tinysrgb&w=1280",    # Act 4: Night highway
+                "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1920",  # Act 1: Launch at sunset
+                "https://images.pexels.com/photos/1545743/pexels-photo-1545743.jpeg?auto=compress&cs=tinysrgb&w=1920",   # Act 2: Coastal cruise
+                "https://images.pexels.com/photos/3802510/pexels-photo-3802510.jpeg?auto=compress&cs=tinysrgb&w=1920",   # Act 3: Hairpin drift
+                "https://images.pexels.com/photos/120049/pexels-photo-120049.jpeg?auto=compress&cs=tinysrgb&w=1920",    # Act 4: Night highway
             ]
             act_url = vehicle_acts[seq_idx % len(vehicle_acts)]
             try:
