@@ -572,7 +572,7 @@ class WorkerRunner:
         seed: int,
         width: int = 640,
         height: int = 360,
-        retries: int = 3,
+        retries: int = 6,
     ) -> Optional[Any]:
         """Fetch a genuine neural diffusion frame from the cloud AI inference endpoint."""
         import urllib.request
