@@ -91,11 +91,10 @@ def plan_task_chunks(
 
     for idx in range(calculated_chunks):
         end_time = min(total_seconds, current_time + chunk_duration)
-        # Assign relevant sentence slice or full prompt with scene context
-        sentence_idx = idx % len(prompt_sentences)
+        # Unified continuous scene prompt across all distributed servers
         scene_prompt = (
-            f"[Scene {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
-            f"{prompt_sentences[sentence_idx]}"
+            f"[Part {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
+            f"{request.story_prompt.strip()}"
         )
 
         chunk = TaskChunk(

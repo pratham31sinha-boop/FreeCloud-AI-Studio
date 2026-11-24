@@ -212,6 +212,8 @@ class WorkerOrchestrator:
                         prompt_segment=chunk.prompt_segment,
                         anime_style=chunk.anime_style,
                         characters=char_bundles,
+                        total_chunks=len(job.chunks),
+                        total_duration_sec=float(job.request.duration_minutes * 60.0),
                         motion_guidance={
                             "tracking_enabled": job.request.continuity_motion_tracking,
                             "motion_reference_id": chunk.motion_reference_id,

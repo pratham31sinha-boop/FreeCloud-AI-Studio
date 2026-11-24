@@ -70,6 +70,8 @@ class TaskLeaseResponse(BaseModel):
     anime_style: Optional[str] = None
     characters: List[CharacterReferenceBundle] = Field(default_factory=list)
     motion_guidance: Optional[Dict[str, Any]] = None
+    total_chunks: Optional[int] = 4
+    total_duration_sec: Optional[float] = None
     lease_expires_at: Optional[float] = None
     artifact_upload_url: Optional[str] = None
     message: str = "Task assigned"

@@ -746,22 +746,17 @@ class WorkerRunner:
             raise RuntimeError(f"Could not open VideoWriter for {temp_visual_path}")
 
         raw_prompt = prompt or "Cinematic AI Masterpiece"
-        clean_prompt = re.sub(r"\[Scene\s*\d+/\d+\s*\|\s*[\d\.]+s-[\d\.]+s\]", "", raw_prompt).strip()
+        clean_prompt = re.sub(r"\[(Scene|Part)\s*\d+/\d+\s*\|\s*[\d\.]+s-[\d\.]+s\]", "", raw_prompt).strip()
         if not clean_prompt:
             clean_prompt = "Cinematic atmospheric masterpiece, 8k resolution, highly detailed"
 
         seq_idx = lease.get("sequence_index", 0) if lease else 0
+        total_chunks = max(1, lease.get("total_chunks", 4) if lease else 4)
         anime_style = (lease.get("anime_style") or "").lower() if lease else ""
-        seed_base = abs(hash(f"{chunk_id}_{clean_prompt}")) % 1000000
-
-        # Cinematic 4-Act Direction Arc across distributed runners
-        cinematic_angles = [
-            "wide establishing cinematic shot, expansive view, atmospheric volumetric lighting, 35mm anamorphic lens, physical motion",
-            "medium dynamic tracking camera shot, continuous motion, cinematic focal depth, rich textural details, moving limbs",
-            "intense dramatic close-up shot, shallow depth of field, dramatic cinematic lighting, micro-details, mouth moving",
-            "epic panoramic resolution shot, sprawling horizon, golden hour volumetric rays, grand cinematic scale, walking forward",
-        ]
-        shot_angle = cinematic_angles[seq_idx % len(cinematic_angles)]
+        
+        # Unified master seed tied to the job identity so all 4 servers share the exact same scene & subject
+        job_id = lease.get("job_id", "") if lease else ""
+        seed_base = abs(hash(f"{job_id}_{clean_prompt}")) % 1000000
 
         # Style-specific aesthetic conditioning
         if any(s in anime_style for s in ("shinkai", "ghibli", "ufotable", "mappa", "anime")):
@@ -771,45 +766,47 @@ class WorkerRunner:
         else:
             style_enhancer = "photorealistic, hyperrealistic, cinematic lighting, 8k UHD, masterpiece, 35mm photograph, octane render"
 
-        shot_prompt_1 = f"{clean_prompt}, {shot_angle}, {style_enhancer}"
-        shot_prompt_2 = f"{clean_prompt}, dynamic motion progression, atmospheric depth, moving action, {style_enhancer}"
+        # Unified single-shot prompt shared across all 4 servers
+        master_shot_prompt = f"{clean_prompt}, continuous cinematic tracking camera, forward movement, seamless physical motion, {style_enhancer}"
 
-        logger.info("Rendering Shot %d (Chunk %s) with prompt: %s", seq_idx + 1, chunk_id, shot_prompt_1[:80])
+        logger.info(
+            "Rendering Server Segment %d/%d (Chunk %s) for unified single video: %s",
+            seq_idx + 1, total_chunks, chunk_id, master_shot_prompt[:80],
+        )
 
         # Step 1: Attempt Cloud Video Diffusion Engine (Lightricks/ltx-video-distilled)
-        motion_frames = self._synthesize_cloud_motion_video(shot_prompt_1, seed=seed_base, width=512, height=384)
-
-        # 3D cinematic camera trajectories across the 4 distributed worker acts
-        trajectories = [
-            {"zoom_start": 1.00, "zoom_end": 1.08, "pan_x": 20.0, "pan_y": -6.0},
-            {"zoom_start": 1.06, "zoom_end": 1.01, "pan_x": -25.0, "pan_y": 8.0},
-            {"zoom_start": 1.01, "zoom_end": 1.10, "pan_x": 15.0, "pan_y": -10.0},
-            {"zoom_start": 1.00, "zoom_end": 1.06, "pan_x": -18.0, "pan_y": 12.0},
-        ]
-        traj = trajectories[seq_idx % len(trajectories)]
+        motion_frames = self._synthesize_cloud_motion_video(master_shot_prompt, seed=seed_base, width=512, height=384)
 
         try:
             if motion_frames and len(motion_frames) >= 12:
-                logger.info("Using %d authentic cloud diffusion motion frames for Chunk %s", len(motion_frames), chunk_id)
+                logger.info("Using %d authentic cloud diffusion motion frames for Server Segment %d/%d", len(motion_frames), seq_idx + 1, total_chunks)
                 n_m = len(motion_frames)
-                period = 2 * (n_m - 1)
+                k_blend = min(12, max(4, n_m // 5))
 
                 for idx in range(total_frames):
-                    t = idx / max(1, total_frames - 1)
-                    ease_t = 0.5 * (1.0 - np.cos(np.pi * t))
+                    # Continuous global timeline across all 4 servers
+                    t_chunk = idx / max(1, total_frames)
+                    t_global = (seq_idx + t_chunk) / total_chunks
 
-                    # Ping-pong cycle through motion frames for continuous organic movement
-                    phase = idx % period
-                    frame_idx = phase if phase < n_m else period - phase
-                    raw_f = motion_frames[frame_idx]
+                    # Strictly forward-only continuous cyclic motion (NEVER rewinds)
+                    global_frame_idx = seq_idx * total_frames + idx
+                    base_idx = global_frame_idx % n_m
+
+                    if base_idx >= n_m - k_blend:
+                        blend_alpha = (base_idx - (n_m - k_blend)) / float(k_blend)
+                        f1 = motion_frames[base_idx]
+                        f2 = motion_frames[base_idx - (n_m - k_blend)]
+                        raw_f = cv2.addWeighted(f1, 1.0 - blend_alpha, f2, blend_alpha, 0)
+                    else:
+                        raw_f = motion_frames[base_idx]
 
                     if (raw_f.shape[1], raw_f.shape[0]) != (width, height):
                         raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
 
-                    # Simultaneous cinematic camera tracking
-                    curr_zoom = traj["zoom_start"] + (traj["zoom_end"] - traj["zoom_start"]) * ease_t
-                    cx = (width / 2.0) + (ease_t * traj["pan_x"])
-                    cy = (height / 2.0) + (ease_t * traj["pan_y"])
+                    # Continuous unified camera motion path across the entire video
+                    curr_zoom = 1.00 + 0.08 * t_global
+                    cx = (width / 2.0) + (t_global * 28.0)
+                    cy = (height / 2.0) - (t_global * 8.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -818,7 +815,7 @@ class WorkerRunner:
                     frame = cv2.warpAffine(raw_f, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
                     # Subtle cinematic lighting / exposure breathing
-                    breathe = 1.0 + 0.015 * np.sin(t * 3.0 * np.pi)
+                    breathe = 1.0 + 0.015 * np.sin(t_global * 6.0 * np.pi)
                     if breathe != 1.0:
                         frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
 
@@ -828,47 +825,48 @@ class WorkerRunner:
 
                     writer.write(frame)
             else:
-                logger.info("Activating Dense Optical Flow non-rigid motion warping for Chunk %s", chunk_id)
-                kf1 = self._fetch_neural_diffusion_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
+                logger.info("Activating continuous non-rigid physical motion synthesis for Server Segment %d/%d", seq_idx + 1, total_chunks)
+                kf1 = self._fetch_neural_diffusion_frame(master_shot_prompt, seed=seed_base, width=width, height=height)
                 if kf1 is None:
-                    kf1 = self._synthesize_failsafe_latent_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
-
-                kf2 = self._fetch_neural_diffusion_frame(shot_prompt_2, seed=seed_base + 202, width=width, height=height)
-                if kf2 is None:
-                    kf2 = cv2.flip(kf1, 1)
-
-                # Compute dense optical flow displacement field between keyframes
-                gray1 = cv2.cvtColor(kf1, cv2.COLOR_BGR2GRAY)
-                gray2 = cv2.cvtColor(kf2, cv2.COLOR_BGR2GRAY)
-                dis = cv2.DISOpticalFlow_create(cv2.DISOpticalFlow_PRESET_FAST)
-                flow = dis.calc(gray1, gray2, None)
+                    kf1 = self._synthesize_failsafe_latent_frame(master_shot_prompt, seed=seed_base, width=width, height=height)
 
                 grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
 
                 for idx in range(total_frames):
-                    t = idx / max(1, total_frames - 1)
-                    ease_t = 0.5 * (1.0 - np.cos(np.pi * t))
+                    # Continuous global timeline across all 4 servers
+                    t_chunk = idx / max(1, total_frames)
+                    t_global = (seq_idx + t_chunk) / total_chunks
 
-                    # Non-rigid pixel deformation along the flow vector field
-                    morph_factor = 0.45 * np.sin(np.pi * ease_t)
-                    map_x = (grid_x + morph_factor * flow[:, :, 0]).astype(np.float32)
-                    map_y = (grid_y + morph_factor * flow[:, :, 1]).astype(np.float32)
+                    # Continuous physical stride and muscular breathing progressing strictly forward
+                    # (advances continuously across server boundaries with zero seams and zero rewind)
+                    stride_freq = total_chunks * 2.5
+                    stride_cycle = np.sin(2.0 * np.pi * stride_freq * t_global)
+                    stride_dy = np.cos(2.0 * np.pi * stride_freq * t_global)
 
-                    warped1 = cv2.remap(kf1, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+                    # Non-rigid pixel deformation: paws stride, torso breathes, fur/atmosphere moves
+                    dx = 4.5 * stride_cycle * (grid_y / height)
+                    dy = 2.5 * stride_dy * (1.0 - grid_y / height)
 
-                    # Cross-blend with keyframe 2 for progressive transformation
-                    blended = cv2.addWeighted(warped1, 1.0 - ease_t * 0.5, kf2, ease_t * 0.5, 0)
+                    map_x = (grid_x + dx).astype(np.float32)
+                    map_y = (grid_y + dy).astype(np.float32)
 
-                    # 3D cinematic camera tracking
-                    curr_zoom = traj["zoom_start"] + (traj["zoom_end"] - traj["zoom_start"]) * ease_t
-                    cx = (width / 2.0) + (ease_t * traj["pan_x"])
-                    cy = (height / 2.0) + (ease_t * traj["pan_y"])
+                    warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+
+                    # Continuous camera progression from t_global = 0.0 to 1.0
+                    curr_zoom = 1.00 + 0.08 * t_global
+                    cx = (width / 2.0) + (t_global * 28.0)
+                    cy = (height / 2.0) - (t_global * 8.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
                     M[1, 2] += (height / 2.0) - cy
 
-                    frame = cv2.warpAffine(blended, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+                    frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+
+                    # Subtle continuous lighting breathing
+                    breathe = 1.0 + 0.015 * np.sin(t_global * 6.0 * np.pi)
+                    if breathe != 1.0:
+                        frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
 
                     # Cinematic anamorphic widescreen letterboxing (2.35:1 Hollywood aspect ratio)
                     frame[:20, :] = 0
