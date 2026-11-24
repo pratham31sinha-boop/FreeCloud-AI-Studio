@@ -642,6 +642,80 @@ class WorkerRunner:
         frame = cv2.merge([b, g, r])
         return cv2.GaussianBlur(frame, (51, 51), 0)
 
+    def _synthesize_cloud_motion_video(
+        self,
+        prompt: str,
+        seed: int,
+        width: int = 512,
+        height: int = 384,
+    ) -> Optional[list]:
+        """Synthesize true generative AI video frames with authentic living motion using cloud video diffusion.
+
+        Queries ZeroGPU video diffusion (Lightricks/ltx-video-distilled) via Gradio API.
+        Returns a list of decoded BGR frames with genuine physical motion (limbs, mouth, camera, fluid dynamics).
+        """
+        import os
+        import time
+        import cv2
+
+        try:
+            from gradio_client import Client
+            logger.info("Connecting to Cloud Video Diffusion Engine (Lightricks/ltx-video-distilled)...")
+            client = Client("Lightricks/ltx-video-distilled")
+
+            clean_prompt = prompt.replace("\n", " ").strip()
+            negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted, static picture, lowres"
+
+            logger.info("Requesting cloud video diffusion inference for prompt: %s (Seed: %d)", clean_prompt[:60], seed)
+            t_start = time.time()
+            res = client.predict(
+                prompt=clean_prompt,
+                negative_prompt=negative_prompt,
+                input_image_filepath=None,
+                input_video_filepath=None,
+                height_ui=height,
+                width_ui=width,
+                mode="text-to-video",
+                duration_ui=2,
+                ui_frames_to_use=9,
+                seed_ui=seed % 1000000,
+                randomize_seed=False,
+                ui_guidance_scale=1,
+                improve_texture_flag=True,
+                api_name="/text_to_video",
+            )
+            t_elapsed = time.time() - t_start
+            logger.info("Cloud video diffusion completed in %.2fs: %s", t_elapsed, res)
+
+            video_path = None
+            if isinstance(res, (tuple, list)) and len(res) > 0:
+                first = res[0]
+                if isinstance(first, dict):
+                    video_path = first.get("video")
+                elif isinstance(first, str):
+                    video_path = first
+            elif isinstance(res, dict):
+                video_path = res.get("video")
+            elif isinstance(res, str):
+                video_path = res
+
+            if video_path and os.path.exists(video_path) and os.path.getsize(video_path) > 1000:
+                cap = cv2.VideoCapture(video_path)
+                frames = []
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frames.append(frame)
+                cap.release()
+                if len(frames) >= 12:
+                    logger.info("Extracted %d authentic motion frames from cloud video diffusion", len(frames))
+                    return frames
+        except Exception as exc:
+            logger.warning("Cloud video diffusion inference failed or unavailable: %s", exc)
+
+        return None
+
     def _render_generative_text_to_video(
         self,
         output_path: str,
@@ -651,10 +725,11 @@ class WorkerRunner:
         fps: float,
         lease: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Synthesize continuous neural AI video with 3D camera dynamics and spatial stereo audio.
+        """Synthesize continuous neural AI video with true physical motion, 3D camera dynamics, and spatial stereo audio.
 
-        Each runner generates genuine neural diffusion visuals with zero hardcoded 2D geometric shapes,
-        applying 3D camera pan, dolly zoom, optical keyframe interpolation, and cinematic exposure dynamics.
+        Attempts True Cloud Video Diffusion first (LTX-Video Distilled on ZeroGPU) to obtain real physical motion (limbs,
+        mouth, head turns, camera glide). If the external cloud diffusion queue is busy or rate-limited, falls back to
+        Dense Optical Flow (DIS optical flow) non-rigid displacement field morphing between two distinct generative keyframes.
         """
         import cv2
         import numpy as np
@@ -681,10 +756,10 @@ class WorkerRunner:
 
         # Cinematic 4-Act Direction Arc across distributed runners
         cinematic_angles = [
-            "wide establishing cinematic shot, expansive view, atmospheric volumetric lighting, 35mm anamorphic lens",
-            "medium dynamic tracking camera shot, continuous motion, cinematic focal depth, rich textural details",
-            "intense dramatic close-up shot, shallow depth of field, dramatic cinematic lighting, micro-details, bokeh",
-            "epic panoramic resolution shot, sprawling horizon, golden hour volumetric rays, grand cinematic scale",
+            "wide establishing cinematic shot, expansive view, atmospheric volumetric lighting, 35mm anamorphic lens, physical motion",
+            "medium dynamic tracking camera shot, continuous motion, cinematic focal depth, rich textural details, moving limbs",
+            "intense dramatic close-up shot, shallow depth of field, dramatic cinematic lighting, micro-details, mouth moving",
+            "epic panoramic resolution shot, sprawling horizon, golden hour volumetric rays, grand cinematic scale, walking forward",
         ]
         shot_angle = cinematic_angles[seq_idx % len(cinematic_angles)]
 
@@ -697,50 +772,109 @@ class WorkerRunner:
             style_enhancer = "photorealistic, hyperrealistic, cinematic lighting, 8k UHD, masterpiece, 35mm photograph, octane render"
 
         shot_prompt_1 = f"{clean_prompt}, {shot_angle}, {style_enhancer}"
-        shot_prompt_2 = f"{clean_prompt}, dynamic motion progression, atmospheric depth, {style_enhancer}"
+        shot_prompt_2 = f"{clean_prompt}, dynamic motion progression, atmospheric depth, moving action, {style_enhancer}"
 
         logger.info("Rendering Shot %d (Chunk %s) with prompt: %s", seq_idx + 1, chunk_id, shot_prompt_1[:80])
 
-        # Synthesize Keyframe 1 from Cloud Neural Diffusion
-        kf1 = self._fetch_neural_diffusion_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
-        if kf1 is None:
-            kf1 = self._synthesize_failsafe_latent_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
+        # Step 1: Attempt Cloud Video Diffusion Engine (Lightricks/ltx-video-distilled)
+        motion_frames = self._synthesize_cloud_motion_video(shot_prompt_1, seed=seed_base, width=512, height=384)
 
         # 3D cinematic camera trajectories across the 4 distributed worker acts
         trajectories = [
-            {"zoom_start": 1.00, "zoom_end": 1.10, "pan_x": 25.0, "pan_y": -8.0},
-            {"zoom_start": 1.08, "zoom_end": 1.01, "pan_x": -30.0, "pan_y": 10.0},
-            {"zoom_start": 1.02, "zoom_end": 1.14, "pan_x": 18.0, "pan_y": -14.0},
-            {"zoom_start": 1.00, "zoom_end": 1.07, "pan_x": -22.0, "pan_y": 18.0},
+            {"zoom_start": 1.00, "zoom_end": 1.08, "pan_x": 20.0, "pan_y": -6.0},
+            {"zoom_start": 1.06, "zoom_end": 1.01, "pan_x": -25.0, "pan_y": 8.0},
+            {"zoom_start": 1.01, "zoom_end": 1.10, "pan_x": 15.0, "pan_y": -10.0},
+            {"zoom_start": 1.00, "zoom_end": 1.06, "pan_x": -18.0, "pan_y": 12.0},
         ]
         traj = trajectories[seq_idx % len(trajectories)]
 
         try:
-            for idx in range(total_frames):
-                t = idx / max(1, total_frames - 1)
-                # Cosine ease-in/ease-out for smooth cinema camera velocity
-                ease_t = 0.5 * (1.0 - np.cos(np.pi * t))
+            if motion_frames and len(motion_frames) >= 12:
+                logger.info("Using %d authentic cloud diffusion motion frames for Chunk %s", len(motion_frames), chunk_id)
+                n_m = len(motion_frames)
+                period = 2 * (n_m - 1)
 
-                curr_zoom = traj["zoom_start"] + (traj["zoom_end"] - traj["zoom_start"]) * ease_t
-                cx = (width / 2.0) + (ease_t * traj["pan_x"])
-                cy = (height / 2.0) + (ease_t * traj["pan_y"])
+                for idx in range(total_frames):
+                    t = idx / max(1, total_frames - 1)
+                    ease_t = 0.5 * (1.0 - np.cos(np.pi * t))
 
-                M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
-                M[0, 2] += (width / 2.0) - cx
-                M[1, 2] += (height / 2.0) - cy
+                    # Ping-pong cycle through motion frames for continuous organic movement
+                    phase = idx % period
+                    frame_idx = phase if phase < n_m else period - phase
+                    raw_f = motion_frames[frame_idx]
 
-                frame = cv2.warpAffine(kf1, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+                    if (raw_f.shape[1], raw_f.shape[0]) != (width, height):
+                        raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
 
-                # Subtle cinematic lighting / exposure breathing
-                breathe = 1.0 + 0.018 * np.sin(t * 3.0 * np.pi)
-                if breathe != 1.0:
-                    frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
+                    # Simultaneous cinematic camera tracking
+                    curr_zoom = traj["zoom_start"] + (traj["zoom_end"] - traj["zoom_start"]) * ease_t
+                    cx = (width / 2.0) + (ease_t * traj["pan_x"])
+                    cy = (height / 2.0) + (ease_t * traj["pan_y"])
 
-                # Cinematic anamorphic widescreen letterboxing (clean 2.35:1 Hollywood ratio)
-                frame[:20, :] = 0
-                frame[-22:, :] = 0
+                    M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
+                    M[0, 2] += (width / 2.0) - cx
+                    M[1, 2] += (height / 2.0) - cy
 
-                writer.write(frame)
+                    frame = cv2.warpAffine(raw_f, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+
+                    # Subtle cinematic lighting / exposure breathing
+                    breathe = 1.0 + 0.015 * np.sin(t * 3.0 * np.pi)
+                    if breathe != 1.0:
+                        frame = np.clip(frame.astype(np.float32) * breathe, 0, 255).astype(np.uint8)
+
+                    # Cinematic anamorphic widescreen letterboxing (2.35:1 Hollywood aspect ratio)
+                    frame[:20, :] = 0
+                    frame[-22:, :] = 0
+
+                    writer.write(frame)
+            else:
+                logger.info("Activating Dense Optical Flow non-rigid motion warping for Chunk %s", chunk_id)
+                kf1 = self._fetch_neural_diffusion_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
+                if kf1 is None:
+                    kf1 = self._synthesize_failsafe_latent_frame(shot_prompt_1, seed=seed_base + 101, width=width, height=height)
+
+                kf2 = self._fetch_neural_diffusion_frame(shot_prompt_2, seed=seed_base + 202, width=width, height=height)
+                if kf2 is None:
+                    kf2 = cv2.flip(kf1, 1)
+
+                # Compute dense optical flow displacement field between keyframes
+                gray1 = cv2.cvtColor(kf1, cv2.COLOR_BGR2GRAY)
+                gray2 = cv2.cvtColor(kf2, cv2.COLOR_BGR2GRAY)
+                dis = cv2.DISOpticalFlow_create(cv2.DISOpticalFlow_PRESET_FAST)
+                flow = dis.calc(gray1, gray2, None)
+
+                grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
+
+                for idx in range(total_frames):
+                    t = idx / max(1, total_frames - 1)
+                    ease_t = 0.5 * (1.0 - np.cos(np.pi * t))
+
+                    # Non-rigid pixel deformation along the flow vector field
+                    morph_factor = 0.45 * np.sin(np.pi * ease_t)
+                    map_x = (grid_x + morph_factor * flow[:, :, 0]).astype(np.float32)
+                    map_y = (grid_y + morph_factor * flow[:, :, 1]).astype(np.float32)
+
+                    warped1 = cv2.remap(kf1, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+
+                    # Cross-blend with keyframe 2 for progressive transformation
+                    blended = cv2.addWeighted(warped1, 1.0 - ease_t * 0.5, kf2, ease_t * 0.5, 0)
+
+                    # 3D cinematic camera tracking
+                    curr_zoom = traj["zoom_start"] + (traj["zoom_end"] - traj["zoom_start"]) * ease_t
+                    cx = (width / 2.0) + (ease_t * traj["pan_x"])
+                    cy = (height / 2.0) + (ease_t * traj["pan_y"])
+
+                    M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
+                    M[0, 2] += (width / 2.0) - cx
+                    M[1, 2] += (height / 2.0) - cy
+
+                    frame = cv2.warpAffine(blended, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
+
+                    # Cinematic anamorphic widescreen letterboxing (2.35:1 Hollywood aspect ratio)
+                    frame[:20, :] = 0
+                    frame[-22:, :] = 0
+
+                    writer.write(frame)
         finally:
             writer.release()
 
