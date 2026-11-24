@@ -79,3 +79,31 @@ def get_master_anchor_image(job_id: str):
         media_type="image/png",
         filename=f"{job_id}_master_anchor.png",
     )
+
+
+@router.get("/{job_id}/anchor/{seq_idx}")
+def get_act_anchor_image(job_id: str, seq_idx: int):
+    """Serve the story-progressive anchor image for the specific act chunk."""
+    job = worker_orchestrator.get_job(job_id)
+    if job and 0 <= seq_idx < len(job.chunks):
+        chunk_prompt = job.chunks[seq_idx].prompt_segment
+    elif job:
+        chunk_prompt = job.request.story_prompt
+    else:
+        chunk_prompt = "cinematic high quality video subject"
+
+    clean_story = (chunk_prompt or "").strip()
+    m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
+
+    anchor_path = storage_manager.get_or_create_act_anchor(
+        job_id=job_id,
+        seq_idx=seq_idx,
+        prompt=clean_story,
+        seed=m_seed,
+    )
+    return FileResponse(
+        path=str(anchor_path),
+        media_type="image/png",
+        filename=f"{job_id}_anchor_act_{seq_idx}.png",
+    )
+

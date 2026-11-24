@@ -204,6 +204,63 @@ class StorageManager:
         cv2.imwrite(str(anchor_path), frame)
         return anchor_path
 
+    def get_or_create_act_anchor(
+        self, job_id: str, seq_idx: int, prompt: str, seed: int = 42, width: int = 640, height: int = 360
+    ) -> Path:
+        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk."""
+        anchor_path = self.artifacts_dir / f"{job_id}_anchor_act_{seq_idx}.png"
+        if anchor_path.is_file() and anchor_path.stat().st_size > 1000:
+            return anchor_path
+
+        master_anchor = self.artifacts_dir / f"{job_id}_master_anchor.png"
+        if not master_anchor.is_file() or master_anchor.stat().st_size <= 1000:
+            self.get_or_create_master_anchor(job_id, prompt, seed=seed, width=width, height=height)
+
+        import urllib.request
+        import urllib.parse
+        import cv2
+        import numpy as np
+        import logging
+        import time
+        import shutil
+
+        logger = logging.getLogger(__name__)
+        clean_prompt = prompt.replace("\n", " ").strip()
+        encoded = urllib.parse.quote(clean_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&seed={seed}&nologo=true"
+
+        for attempt in range(1, 3):
+            try:
+                logger.info("Fetching Act %d anchor image from cloud inference (attempt %d/2)...", seq_idx, attempt)
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    raw_data = resp.read()
+                if len(raw_data) > 1000:
+                    arr = np.frombuffer(raw_data, dtype=np.uint8)
+                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    if img is not None and img.shape[0] > 0 and img.shape[1] > 0:
+                        if (img.shape[1], img.shape[0]) != (width, height):
+                            img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
+                        cv2.imwrite(str(anchor_path), img)
+                        logger.info("Act %d anchor successfully saved to %s (%d bytes)", seq_idx, anchor_path, len(raw_data))
+                        return anchor_path
+            except Exception as exc:
+                logger.warning("Act %d anchor fetch attempt %d failed: %s", seq_idx, attempt, exc)
+                time.sleep(1.5)
+
+        # Fallback to master anchor if available
+        if master_anchor.is_file() and master_anchor.stat().st_size > 1000:
+            shutil.copy2(master_anchor, anchor_path)
+            return anchor_path
+
+        return self.get_or_create_master_anchor(job_id, prompt, seed=seed, width=width, height=height)
+
+
 
 # Global default instance
 storage_manager = StorageManager()

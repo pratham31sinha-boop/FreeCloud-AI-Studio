@@ -116,7 +116,7 @@ def plan_task_chunks(
             prompt_segment=scene_prompt,
             anime_style=str(request.anime_style),
             model_name=getattr(request, "model_name", "wan_2_1"),
-            anchor_frame_url=f"/api/v1/jobs/{job_id}/master-anchor",
+            anchor_frame_url=f"/api/v1/jobs/{job_id}/anchor/{idx}",
             character_ids=list(request.character_ids),
             motion_reference_id=f"motion_{job_id}_seq_{idx:03d}" if request.continuity_motion_tracking else None,
             status=TaskChunkStatus.PENDING,

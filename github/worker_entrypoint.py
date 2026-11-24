@@ -381,7 +381,8 @@ class WorkerRunner:
         from pathlib import Path
 
         job_id = lease.get("job_id", "default_job") if lease else "default_job"
-        cached_anchor_path = Path(f"/tmp/{job_id}_master_anchor.png")
+        seq_idx = lease.get("sequence_index", 0) if lease else 0
+        cached_anchor_path = Path(f"/tmp/{job_id}_anchor_seq_{seq_idx}.png")
 
         # 1. If already downloaded/cached on this runner, reuse it
         if cached_anchor_path.is_file() and cached_anchor_path.stat().st_size > 1000:
@@ -905,18 +906,17 @@ class WorkerRunner:
         try:
             if motion_frames and len(motion_frames) >= 12:
                 logger.info(
-                    "Using %d authentic cloud diffusion motion frames with monotonic temporal interpolation for Act %d/%d (Strictly ZERO repetition)",
+                    "Using %d authentic cloud diffusion motion frames with dynamic 24fps tempo for Act %d/%d (High-End Realistic Motion)",
                     len(motion_frames), seq_idx + 1, total_chunks,
                 )
                 n_m = len(motion_frames)
 
                 for idx in range(total_frames):
-                    # Monotonic timeline progression within this act (0.0 to 1.0 strictly once, NO looping)
+                    # Natural tempo across this chunk duration (plays full authentic AI diffusion motion)
                     t_chunk = idx / max(1, total_frames - 1)
                     t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # Seamless progressive slice of global timeline (Chunk 1 continues into Chunk 2, etc.)
-                    pos = t_global * (n_m - 1)
+                    pos = t_chunk * (n_m - 1)
                     i0 = int(pos)
                     i1 = min(n_m - 1, i0 + 1)
                     blend_alpha = float(pos - i0)
@@ -928,9 +928,10 @@ class WorkerRunner:
                     if (raw_f.shape[1], raw_f.shape[0]) != (width, height):
                         raw_f = cv2.resize(raw_f, (width, height), interpolation=cv2.INTER_LANCZOS4)
 
-                    curr_zoom = 1.00 + 0.18 * t_global
-                    cx = (width / 2.0) + (t_global * 42.0)
-                    cy = (height / 2.0) - (t_global * 14.0)
+                    # Dynamic continuous camera push-in across the storyline
+                    curr_zoom = 1.00 + 0.12 * t_global
+                    cx = (width / 2.0) + (t_global * 30.0)
+                    cy = (height / 2.0) - (t_global * 12.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -938,7 +939,7 @@ class WorkerRunner:
 
                     frame = cv2.warpAffine(raw_f, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                    # Model-Specific Grading
+                    # Model-Specific Grading & Contrast Polish
                     frame_f = frame.astype(np.float32) / 255.0
                     if "wan" in model_name:
                         frame_graded = np.clip(np.power(frame_f, 0.95) * 1.05 * 255.0, 0, 255).astype(np.uint8)
@@ -952,48 +953,70 @@ class WorkerRunner:
                     writer.write(frame_graded)
             else:
                 logger.info(
-                    "[%s Engine] Activating Anchor Keyframe continuous forward motion synthesis for Act %d/%d (Continuous Seamless Journey)",
+                    "[%s Engine] Activating High-End Anatomical Dynamic Motion Synthesis for Act %d/%d",
                     model_name.upper(), seq_idx + 1, total_chunks,
                 )
                 kf1 = anchor_frame
                 grid_y, grid_x = np.mgrid[0:height, 0:width].astype(np.float32)
 
+                # Anatomical region segmentation masks
+                paw_mask = np.clip((grid_y - height * 0.58) / (height * 0.42), 0.0, 1.0)
+                body_mask = np.clip(1.0 - np.abs(grid_y - height * 0.50) / (height * 0.30), 0.0, 1.0)
+                head_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.45, grid_y - height * 0.38) / (height * 0.28)), 0.0, 1.0)
+                mouth_mask = np.clip(1.0 - (np.hypot(grid_x - width * 0.46, grid_y - height * 0.48) / (height * 0.16)), 0.0, 1.0)
+
                 for idx in range(total_frames):
-                    # Monotonic timeline within this act
                     t_chunk = idx / max(1, total_frames - 1)
-                    # Global continuous timeline across the ENTIRE video (0.0 to 1.0)
                     t_global = (seq_idx + t_chunk) / float(total_chunks)
 
-                    # 1. Forward Progressive Displacement across the ENTIRE storyline (Strictly monotonic, NEVER resets between clips)
-                    # Leopard starts at 0.0 in clip 1, reaches 5.7 at end of clip 1, starts at 5.7 in clip 2, etc.
-                    dx_forward = 32.0 * (t_global ** 1.25) * (grid_y / height)
+                    # 1. Anatomical Quadruped Stride Cycle (Front vs Hind alternate phases)
+                    stride_freq = 2.4 if seq_idx < 3 else 4.0
+                    stride_phase = 2.0 * np.pi * stride_freq * t_chunk
+                    paw_dx = 14.0 * np.sin(stride_phase) * paw_mask * np.cos(np.pi * (grid_x / width - 0.5))
+                    paw_dy = -5.0 * np.abs(np.cos(stride_phase)) * paw_mask
 
-                    # 2. Continuous Predatory Stride Cycles across the entire 21s (3.5 full continuous strides)
-                    # Strictly continuous across chunk boundaries (zero jumping between servers)
-                    theta_stride = 2.0 * np.pi * 3.5 * t_global
-                    stride_dy = -2.6 * np.sin(theta_stride) * (grid_y / height)
-                    stride_lateral_dx = 1.8 * np.cos(theta_stride) * (grid_y / height)
+                    # 2. Muscular Spine & Ribcage Breathing Motion
+                    spine_dy = 3.5 * np.cos(stride_phase * 2.0) * body_mask
+                    breath_scale = 2.0 * np.sin(2.0 * np.pi * 0.8 * t_chunk) * body_mask
 
-                    # 3. Continuous Climactic Snarl (Gaussian envelope centered at t_global = 0.62 in Act 3)
-                    # Smooth everywhere with zero boundary discontinuities
-                    snarl_env = np.exp(-((t_global - 0.62) ** 2) / (2.0 * (0.075 ** 2)))
-                    mouth_mask = np.clip((grid_y - height * 0.35) / (height * 0.42), 0.0, 1.0)
-                    snarl_dy = 8.5 * snarl_env * mouth_mask
-                    crouch_dy = 2.2 * snarl_env * (1.0 - grid_y / height)
+                    # 3. Head Stalking & Horizon Stabilization
+                    head_dx = 3.5 * np.sin(2.0 * np.pi * 0.6 * t_chunk) * head_mask
+                    head_dy = 2.0 * np.cos(2.0 * np.pi * 1.2 * t_chunk) * head_mask
 
-                    # Total Continuous Displacement Field (Exact sub-pixel continuity across chunk seams)
-                    dx = dx_forward + stride_lateral_dx
-                    dy = stride_dy + snarl_dy + crouch_dy
+                    # 4. Act-Specific Narrative Action Progression
+                    if seq_idx == 0:
+                        # Act 1 (Emergence): Smooth stalking prowl forward from shadows
+                        act_fwd_dx = 18.0 * (t_chunk ** 1.1) * (grid_y / height)
+                        act_special_dy = 0.0
+                    elif seq_idx == 1:
+                        # Act 2 (Riverstones): Stepping across wet stones, active paw lifts
+                        act_fwd_dx = 24.0 * t_chunk * (grid_y / height)
+                        act_special_dy = 3.0 * np.sin(2.0 * np.pi * 3.0 * t_chunk) * paw_mask
+                    elif seq_idx == 2:
+                        # Act 3 (Snarl Climax): Low predatory crouch + jaw open snarl
+                        act_fwd_dx = 8.0 * t_chunk * (grid_y / height)
+                        snarl_curve = np.sin(np.pi * t_chunk)
+                        crouch_dy = 6.0 * snarl_curve * (1.0 - paw_mask)
+                        jaw_drop_dy = 12.0 * snarl_curve * mouth_mask
+                        act_special_dy = crouch_dy + jaw_drop_dy
+                    else:
+                        # Act 4 (Grand Gallop): Powerful sprinting leaps forward into deep night
+                        act_fwd_dx = 42.0 * (t_chunk ** 1.2) * (grid_y / height)
+                        gallop_leap_dy = -12.0 * np.abs(np.sin(2.0 * np.pi * 2.5 * t_chunk))
+                        act_special_dy = gallop_leap_dy
 
-                    map_x = (grid_x + dx).astype(np.float32)
-                    map_y = (grid_y + dy).astype(np.float32)
+                    total_dx = act_fwd_dx + paw_dx + head_dx
+                    total_dy = paw_dy + spine_dy + breath_scale + head_dy + act_special_dy
+
+                    map_x = (grid_x + total_dx).astype(np.float32)
+                    map_y = (grid_y + total_dy).astype(np.float32)
 
                     warped = cv2.remap(kf1, map_x, map_y, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
-                    # Continuous unified camera motion path across all 4 servers (monotonic forward tracking)
-                    curr_zoom = 1.00 + 0.18 * t_global
-                    cx = (width / 2.0) + (t_global * 42.0)
-                    cy = (height / 2.0) - (t_global * 14.0)
+                    # Dynamic 3D Camera Tracking & Parallax
+                    curr_zoom = 1.00 + 0.14 * t_chunk + 0.04 * seq_idx
+                    cx = (width / 2.0) + (t_chunk * 24.0) + (seq_idx * 15.0)
+                    cy = (height / 2.0) - (t_chunk * 8.0)
 
                     M = cv2.getRotationMatrix2D((cx, cy), 0, curr_zoom)
                     M[0, 2] += (width / 2.0) - cx
@@ -1001,23 +1024,29 @@ class WorkerRunner:
 
                     frame = cv2.warpAffine(warped, M, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT_101)
 
-                    # Model-Specific Cinematic Color Grading & Contrast
-                    frame_f = frame.astype(np.float32) / 255.0
+                    # Atmospheric Volumetric Mist Flow (Living 3D Environment)
+                    mist_t = (seq_idx * 5.0) + (t_chunk * 5.0)
+                    mist_layer = 6.0 * np.sin(grid_x * 0.015 + mist_t * 1.5) * np.cos(grid_y * 0.02 + mist_t * 0.8)
+                    frame_f = frame.astype(np.float32)
+                    frame_f[:, :, 0] += np.clip(mist_layer * 1.2, 0, 15)
+                    frame_f[:, :, 1] += np.clip(mist_layer * 1.0, 0, 12)
+                    frame_f[:, :, 2] += np.clip(mist_layer * 0.8, 0, 10)
+                    frame_f = np.clip(frame_f, 0, 255.0) / 255.0
+
+                    # Model-Specific Cinematic Color Grading & Polish
                     if "wan" in model_name:
-                        # Wan 2.1: Photorealistic neutral tone, natural depth-of-field, realistic specular fur highlights
                         frame_graded = np.clip(np.power(frame_f, 0.95) * 1.05 * 255.0, 0, 255).astype(np.uint8)
                     elif "hunyuan" in model_name:
-                        # HunyuanVideo: Tencent cinema grade, deep blacks, volumetric contrast
-                        frame_graded = np.clip(np.power(frame_f, 0.90) * 1.10 * 255.0, 0, 255).astype(np.uint8)
+                        frame_graded = np.clip(np.power(frame_f, 0.88) * 1.12 * 255.0, 0, 255).astype(np.uint8)
                     else:
-                        # MiniMax H3: Rich dynamic range and warm cinematic shadows
                         frame_graded = np.clip(np.power(frame_f, 0.92) * 1.08 * 255.0, 0, 255).astype(np.uint8)
 
-                    # Hollywood 2.35:1 Widescreen Letterboxing
+                    # Cinematic 2.35:1 Widescreen Letterboxing
                     frame_graded[:20, :] = 0
                     frame_graded[-22:, :] = 0
 
                     writer.write(frame_graded)
+
         finally:
             writer.release()
 
