@@ -160,19 +160,24 @@ class StorageManager:
         import cv2
         import numpy as np
 
+        import logging
+        import time
+        logger = logging.getLogger(__name__)
+
         clean_prompt = prompt.replace("\n", " ").strip()
         encoded = urllib.parse.quote(clean_prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&seed={seed}&nologo=true"
 
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):
             try:
+                logger.info("Fetching master anchor image from cloud inference (attempt %d/4)...", attempt)
                 req = urllib.request.Request(
                     url,
                     headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
                     },
                 )
-                with urllib.request.urlopen(req, timeout=25) as resp:
+                with urllib.request.urlopen(req, timeout=30) as resp:
                     raw_data = resp.read()
                 if len(raw_data) > 1000:
                     arr = np.frombuffer(raw_data, dtype=np.uint8)
@@ -181,9 +186,11 @@ class StorageManager:
                         if (img.shape[1], img.shape[0]) != (width, height):
                             img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
                         cv2.imwrite(str(anchor_path), img)
+                        logger.info("Master anchor successfully saved to %s (%d bytes)", anchor_path, len(raw_data))
                         return anchor_path
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Master anchor fetch attempt %d failed: %s", attempt, exc)
+                time.sleep(2.5)
 
         # Failsafe procedural anchor
         np.random.seed(seed % (2**31 - 1))

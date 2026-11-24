@@ -104,6 +104,15 @@ class WorkerOrchestrator:
         )
         self.jobs[job_id] = record
 
+        # Pre-synthesize or acquire Master Character Anchor so all runners have it ready immediately
+        clean_story = (request.story_prompt or "").strip()
+        m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
+        try:
+            from backend.storage.manager import storage_manager
+            storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
+        except Exception as anchor_err:
+            logger.warning("Could not pre-synthesize master anchor: %s", anchor_err)
+
         # Dispatch workers via GitHub Actions or local dispatcher
         record.status = JobStatus.ORCHESTRATING
         record.stage_message = f"Orchestrating {target_workers} workers"
