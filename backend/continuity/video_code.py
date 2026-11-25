@@ -13,6 +13,8 @@ import hashlib
 import json
 import logging
 import math
+import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -254,7 +256,10 @@ def extract_handoff_bundle_from_mp4(
             return False, None
 
         anchor_output_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(anchor_output_path), last_frame)
+        unique_suffix = f".{os.getpid()}.{threading.get_ident()}.tmp"
+        tmp_anchor = anchor_output_path.with_name(f"{anchor_output_path.stem}{unique_suffix}.png")
+        cv2.imwrite(str(tmp_anchor), last_frame)
+        os.replace(str(tmp_anchor), str(anchor_output_path))
 
         video_code = extract_video_code_from_frames(
             prev_frame=prev_frame,
@@ -275,7 +280,10 @@ def extract_handoff_bundle_from_mp4(
             worker_state=worker_state,
         )
 
-        code_output_path.write_text(json.dumps(video_code, indent=2), encoding="utf-8")
+        code_output_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_code = code_output_path.with_name(f"{code_output_path.stem}{unique_suffix}.json")
+        tmp_code.write_text(json.dumps(video_code, indent=2), encoding="utf-8")
+        os.replace(str(tmp_code), str(code_output_path))
         return True, video_code
     except Exception as exc:
         logger.error("Failed extracting Video-as-Code handoff from %s: %s", artifact_path, exc)

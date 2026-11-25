@@ -94,72 +94,87 @@ class WorkerRunner:
         self.session_token: Optional[str] = None
         self._render_progress: float = 0.0
 
-    def _post_json(self, path: str, data: Dict[str, Any], retries: int = 4) -> Dict[str, Any]:
+    def _post_json(self, path: str, data: Dict[str, Any], retries: int = 4, timeout: int = 60) -> Dict[str, Any]:
         url = f"{self.backend_url}{path}"
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(data).encode("utf-8"),
-            headers={"Content-Type": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
-            method="POST",
-        )
+        payload_bytes = json.dumps(data).encode("utf-8")
         for attempt in range(retries):
+            req = urllib.request.Request(
+                url,
+                data=payload_bytes,
+                headers={"Content-Type": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
+                method="POST",
+            )
             try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as exc:
                 body = exc.read().decode("utf-8", errors="ignore")
                 logger.error("HTTP error calling %s: %d - %s", url, exc.code, body)
-                raise
+                if exc.code < 500 or attempt == retries - 1:
+                    raise
+                time.sleep(1.5 * (attempt + 1))
             except Exception as exc:
                 logger.warning("Network attempt %d/%d calling %s: %s", attempt + 1, retries, url, exc)
                 if attempt == retries - 1:
                     raise
-                time.sleep(1.5)
+                time.sleep(1.5 * (attempt + 1))
         return {}
 
-    def _get_json(self, path: str, retries: int = 3) -> Dict[str, Any]:
+    def _get_json(self, path: str, retries: int = 4, timeout: int = 30) -> Dict[str, Any]:
         url = f"{self.backend_url}{path}"
-        req = urllib.request.Request(
-            url,
-            headers={"Accept": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
-            method="GET",
-        )
         for attempt in range(retries):
+            req = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json", "User-Agent": f"FreeCloudWorker/{self.worker_id}"},
+                method="GET",
+            )
             try:
-                with urllib.request.urlopen(req, timeout=15) as resp:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except Exception as exc:
                 if attempt == retries - 1:
                     raise
-                time.sleep(1.0)
+                time.sleep(1.0 * (attempt + 1))
         return {}
 
-    def _upload_file(self, path: str, file_path: str) -> Dict[str, Any]:
-        """Upload H.264 chunk artifact using standard multipart form."""
+    def _upload_file(self, path: str, file_path: str, retries: int = 3, timeout: int = 240) -> Dict[str, Any]:
+        """Upload H.264 chunk artifact using standard multipart form with retries."""
         url = f"{self.backend_url}{path}"
-        boundary = "----FreeCloudBoundary" + hashlib.md5(str(time.time()).encode()).hexdigest()
         filename = os.path.basename(file_path)
 
         with open(file_path, "rb") as f:
             file_bytes = f.read()
 
-        body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            f"Content-Type: video/mp4\r\n\r\n"
-        ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        for attempt in range(retries):
+            boundary = "----FreeCloudBoundary" + hashlib.md5(f"{time.time()}_{attempt}".encode()).hexdigest()
+            body = (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                f"Content-Type: video/mp4\r\n\r\n"
+            ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
 
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-                "User-Agent": f"FreeCloudWorker/{self.worker_id}",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "User-Agent": f"FreeCloudWorker/{self.worker_id}",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                if exc.code < 500 or attempt == retries - 1:
+                    raise
+                logger.warning("Upload HTTP %d attempt %d/%d retrying...", exc.code, attempt + 1, retries)
+            except Exception as exc:
+                logger.warning("Upload attempt %d/%d failed (%s): %s", attempt + 1, retries, url, exc)
+                if attempt == retries - 1:
+                    raise
+            time.sleep(2.5 * (attempt + 1))
+        return {}
 
     def register(self) -> bool:
         """Register runner identity with the FreeCloud backend."""
@@ -204,6 +219,7 @@ class WorkerRunner:
             sys.exit(1)
 
         idle_start = time.time()
+        last_status_check = 0.0
         is_turbo = os.getenv("FREECLOUD_TURBO_MODE") == "1"
         poll_sleep = 0.5 if is_turbo else 1.2
         logger.info("Worker claim loop active (Extend Clip + Video-Code ready, Max Idle: %ds)...", max_idle_seconds)
@@ -239,7 +255,17 @@ class WorkerRunner:
                 )
                 self._process_chunk(lease)
             else:
-                elapsed_idle = time.time() - idle_start
+                now = time.time()
+                if self.target_job_id and (now - last_status_check) >= 5.0:
+                    last_status_check = now
+                    try:
+                        job_info = self._get_json(f"/api/v1/jobs/{self.target_job_id}", retries=2, timeout=15)
+                        if job_info.get("status") in ("completed", "failed", "cancelled"):
+                            logger.info("Target job %s reached terminal state '%s'. Exiting cleanly.", self.target_job_id, job_info.get("status"))
+                            break
+                    except Exception:
+                        pass
+                elapsed_idle = now - idle_start
                 if elapsed_idle > max_idle_seconds:
                     logger.info("No pending chunks for %ds. Exiting cleanly.", max_idle_seconds)
                     break
@@ -449,25 +475,29 @@ class WorkerRunner:
 
         anchor_url = lease.get("anchor_frame_url") if lease else None
         if anchor_url:
-            full_url = f"{self.backend_url}{anchor_url}"
-            try:
-                req = urllib.request.Request(full_url, headers={"User-Agent": f"FreeCloudWorker/{self.worker_id}"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    raw_data = resp.read()
-                if len(raw_data) > 1000:
-                    arr = np.frombuffer(raw_data, dtype=np.uint8)
-                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    if img is not None and img.shape[0] > 0:
-                        if (img.shape[1], img.shape[0]) != (width, height):
-                            img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
-                        # Light unsharp polish on extended anchors prevents softness across sequential hops
-                        if is_extended:
-                            blur = cv2.GaussianBlur(img, (0, 0), 1.2)
-                            img = cv2.addWeighted(img, 1.12, blur, -0.12, 0)
-                        cv2.imwrite(str(cached_anchor_path), img)
-                        return img
-            except Exception as exc:
-                logger.warning("Failed downloading anchor from %s: %s", full_url, exc)
+            sep = "&" if "?" in anchor_url else "?"
+            full_url = f"{self.backend_url}{anchor_url}{sep}format=jpg"
+            for attempt in range(3):
+                try:
+                    req = urllib.request.Request(full_url, headers={"User-Agent": f"FreeCloudWorker/{self.worker_id}"})
+                    with urllib.request.urlopen(req, timeout=45) as resp:
+                        raw_data = resp.read()
+                    if len(raw_data) > 1000:
+                        arr = np.frombuffer(raw_data, dtype=np.uint8)
+                        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                        if img is not None and img.shape[0] > 0:
+                            if (img.shape[1], img.shape[0]) != (width, height):
+                                img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+                            # Light unsharp polish on extended anchors prevents softness across sequential hops
+                            if is_extended:
+                                blur = cv2.GaussianBlur(img, (0, 0), 1.2)
+                                img = cv2.addWeighted(img, 1.12, blur, -0.12, 0)
+                            cv2.imwrite(str(cached_anchor_path), img)
+                            return img
+                except Exception as exc:
+                    logger.warning("Failed downloading anchor attempt %d/3 from %s: %s", attempt + 1, full_url, exc)
+                    if attempt < 2:
+                        time.sleep(1.5 * (attempt + 1))
 
         # Offline / standalone failsafe crisp procedural scene artwork (never blurry gradient!)
         m_seed = int(lease.get("master_seed", 42) or 42) if lease else 42
@@ -518,8 +548,10 @@ class WorkerRunner:
 
         cmd.extend([
             "-c:v", "libx264",
-            "-preset", "superfast",
-            "-crf", "19",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-maxrate", "3500k",
+            "-bufsize", "7000k",
             "-threads", "0",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",

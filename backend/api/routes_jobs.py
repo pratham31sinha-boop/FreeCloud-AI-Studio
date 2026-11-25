@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException, status
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from backend.generation.pipeline import generation_pipeline
 from backend.storage.manager import storage_manager
@@ -77,8 +79,39 @@ def download_final_video(job_id: str):
     )
 
 
+def _serve_anchor_image(anchor_path: Path, filename: str, fmt: Optional[str] = None) -> Response:
+    """Serve anchor frame bytes atomically, supporting compact JPEG mode for remote runners."""
+    if fmt and fmt.lower() in ("jpg", "jpeg"):
+        jpg_path = anchor_path.with_suffix(".jpg")
+        try:
+            if not jpg_path.is_file() or jpg_path.stat().st_mtime < anchor_path.stat().st_mtime:
+                import cv2
+
+                img = cv2.imread(str(anchor_path))
+                if img is not None and img.size > 0:
+                    ok, encoded = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 94])
+                    if ok:
+                        tmp_jpg = jpg_path.with_suffix(f".{os.getpid()}.tmp.jpg")
+                        tmp_jpg.write_bytes(encoded.tobytes())
+                        os.replace(str(tmp_jpg), str(jpg_path))
+            if jpg_path.is_file() and jpg_path.stat().st_size > 0:
+                return Response(
+                    content=jpg_path.read_bytes(),
+                    media_type="image/jpeg",
+                    headers={"Content-Disposition": f'inline; filename="{Path(filename).stem}.jpg"'},
+                )
+        except Exception:
+            pass
+
+    return Response(
+        content=anchor_path.read_bytes(),
+        media_type="image/png",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
 @router.get("/{job_id}/master-anchor")
-def get_master_anchor_image(job_id: str):
+def get_master_anchor_image(job_id: str, format: Optional[str] = None):
     """Serve the master anchor reference image to guarantee 100% subject visual consistency across workers."""
     job = worker_orchestrator.get_job(job_id)
     prompt = job.request.story_prompt if job else "cinematic high quality video subject"
@@ -91,15 +124,11 @@ def get_master_anchor_image(job_id: str):
     anchor_path = storage_manager.get_or_create_master_anchor(
         job_id=job_id, prompt=clean_story, seed=m_seed, width=req_w, height=req_h
     )
-    return FileResponse(
-        path=str(anchor_path),
-        media_type="image/png",
-        filename=f"{job_id}_master_anchor.png",
-    )
+    return _serve_anchor_image(anchor_path, f"{job_id}_master_anchor.png", fmt=format)
 
 
 @router.get("/{job_id}/anchor/{seq_idx}")
-def get_act_anchor_image(job_id: str, seq_idx: int):
+def get_act_anchor_image(job_id: str, seq_idx: int, format: Optional[str] = None):
     """Serve the story-progressive anchor image for the specific act chunk."""
     job = worker_orchestrator.get_job(job_id)
     if job and 0 <= seq_idx < len(job.chunks):
@@ -127,11 +156,7 @@ def get_act_anchor_image(job_id: str, seq_idx: int):
         chapter_idx=ch_idx,
         is_chapter_start=is_ch_start,
     )
-    return FileResponse(
-        path=str(anchor_path),
-        media_type="image/png",
-        filename=f"{job_id}_anchor_act_{seq_idx}.png",
-    )
+    return _serve_anchor_image(anchor_path, f"{job_id}_anchor_act_{seq_idx}.png", fmt=format)
 
 
 @router.get("/{job_id}/video-code/{seq_idx}")

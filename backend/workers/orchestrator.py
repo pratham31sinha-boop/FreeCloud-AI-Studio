@@ -213,7 +213,7 @@ class WorkerOrchestrator:
                     "--model",
                     model_name if model_name in ("wan_2_1", "minimax_h3", "hunyuan_video", "auto_relay") else "wan_2_1",
                     "--max-idle-seconds",
-                    "30",
+                    "240",
                 ]
                 subprocess.Popen(
                     cmd,
@@ -575,7 +575,9 @@ class WorkerOrchestrator:
             cap.release()
             if ret and last_frame is not None and last_frame.size > 0:
                 target_path = storage_manager.artifacts_dir / f"{job_id}_anchor_act_{next_seq}.png"
-                cv2.imwrite(str(target_path), last_frame)
+                tmp_path = target_path.with_name(f"{target_path.stem}.{os.getpid()}.{threading.get_ident()}.tmp.png")
+                cv2.imwrite(str(tmp_path), last_frame)
+                os.replace(str(tmp_path), str(target_path))
                 logger.info(
                     "Extend Clip Technology: Extracted last frame of %s (frame %d) -> %s",
                     artifact_path.name,
