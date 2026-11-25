@@ -93,6 +93,7 @@ class WorkerRunner:
         self.model_name = (model or "wan_2_1").lower()
         self.session_token: Optional[str] = None
         self._render_progress: float = 0.0
+        self._diffusion_client: Optional[Any] = None
 
     def _post_json(self, path: str, data: Dict[str, Any], retries: int = 4, timeout: int = 60) -> Dict[str, Any]:
         url = f"{self.backend_url}{path}"
@@ -254,6 +255,9 @@ class WorkerRunner:
                     lease.get("is_extended_clip", False),
                 )
                 self._process_chunk(lease)
+                if not is_turbo:
+                    # Brief yield so another idle cloud worker with a fresh ZeroGPU IP claims the next sequential hop
+                    time.sleep(2.5)
             else:
                 now = time.time()
                 if self.target_job_id and (now - last_status_check) >= 5.0:
@@ -753,12 +757,15 @@ class WorkerRunner:
         lease: Optional[Dict[str, Any]] = None,
         prev_video_code: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """High-end PyCairo cel-shaded 1080p vector animation renderer with Video-as-Code continuity."""
+        """Real Cloud Video Diffusion (LTX-Video / Wan 2.2 I2V / Hunyuan 1.5) with Extend Clip + DIS flow 1080p upscale."""
         from backend.animation.anime_engine import AnimeSceneRenderer
+        from backend.generation.cloud_diffusion import CloudVideoDiffusionClient, stream_diffusion_frames
 
         seq_idx = int(lease.get("sequence_index", 0) if lease else 0)
         total_chunks = max(1, int(lease.get("total_chunks", 4) if lease else 4))
         model_name = (lease.get("model_name") or self.model_name or "wan_2_1").lower() if lease else self.model_name.lower()
+        anime_style = (lease.get("anime_style") or "") if lease else ""
+        is_extended = bool(lease.get("is_extended_clip", seq_idx > 0)) if lease else False
         is_ch_start = bool(lease.get("is_chapter_start", False)) if lease else False
         is_ch_end = bool(lease.get("is_chapter_end", False)) if lease else False
         chapter_title = lease.get("chapter_title") if lease else None
@@ -766,7 +773,7 @@ class WorkerRunner:
 
         clean_prompt = re.sub(r"\[(CHAPTER|Scene|Part|Act|EXTENDED CLIP)[^\]]*\]", "", prompt or "", flags=re.IGNORECASE).strip()
         if not clean_prompt:
-            clean_prompt = "Cyberpunk anime samurai warrior unleashes lightning katana duel across neon Tokyo rooftops"
+            clean_prompt = "Sleek futuristic silver hypercar drifting along sunset coastal cliffside highway, photorealistic 8k"
 
         prev_audio = (prev_video_code or {}).get("audio_continuity", {})
         init_audio_phase = float(prev_audio.get("end_phase_rad", 0.0))
@@ -788,7 +795,41 @@ class WorkerRunner:
             audio_theme, duration_sec, temp_audio_path, init_phase_rad=init_audio_phase, init_rpm_hz=init_audio_rpm
         )
 
-        renderer = AnimeSceneRenderer(width=width, height=height, fps=fps)
+        cloud_mode = os.getenv("FREECLOUD_CLOUD_DIFFUSION", "auto").lower()
+        diffusion_frames = None
+        used_engine = None
+        if cloud_mode != "off":
+            if self._diffusion_client is None:
+                self._diffusion_client = CloudVideoDiffusionClient()
+            anchor_bgr = self._acquire_master_anchor_frame(lease, width=768, height=448) if is_extended else None
+            job_id = str(lease.get("job_id") or chunk_id) if lease else chunk_id
+            m_seed = int(lease.get("master_seed") or (abs(hash(job_id)) + seq_idx * 137)) if lease else abs(hash(chunk_id))
+            diffusion_frames, used_engine = self._diffusion_client.synthesize_chunk_frames(
+                prompt=prompt or clean_prompt,
+                anime_style=anime_style,
+                model_name=model_name,
+                seed=m_seed,
+                total_frames=total_frames,
+                duration_sec=duration_sec,
+                anchor_bgr=anchor_bgr,
+                is_extended=is_extended,
+            )
+            if (
+                not diffusion_frames
+                and not os.getenv("FREECLOUD_TURBO_MODE")
+                and lease
+                and int(lease.get("attempts", 0)) == 0
+                and self._diffusion_client.last_quota_error
+            ):
+                if os.path.exists(temp_audio_path):
+                    try:
+                        os.remove(temp_audio_path)
+                    except Exception:
+                        pass
+                raise RuntimeError(
+                    f"ZeroGPU quota reached on worker {self.worker_id}; requeuing for fresh cloud runner IP"
+                )
+
         proc = self._open_ffmpeg_pipe(width, height, fps, temp_audio_path if has_audio else None, output_path)
         render_state: Dict[str, Any] = {}
 
@@ -798,22 +839,45 @@ class WorkerRunner:
             self._render_progress = round((idx + 1) / float(max(1, total_frames)) * 100.0, 1)
 
         try:
-            render_state = renderer.render_sequence(
-                prompt=clean_prompt,
-                total_frames=total_frames,
-                seq_idx=seq_idx,
-                total_chunks=total_chunks,
-                chunk_id=chunk_id,
-                duration_sec=duration_sec,
-                model_name=model_name,
-                is_chapter_start=is_ch_start,
-                is_chapter_end=is_ch_end,
-                chapter_title=chapter_title,
-                chapter_subtitle=chapter_subtitle,
-                prev_video_code=prev_video_code,
-                gamma_lut=gamma_lut,
-                on_frame=_stream_frame,
-            )
+            if diffusion_frames:
+                logger.info(
+                    "Streaming %d real AI diffusion frames (%s) -> 1080p DIS optical-flow pipe (%d frames)",
+                    len(diffusion_frames), used_engine, total_frames,
+                )
+                render_state = stream_diffusion_frames(
+                    diffusion_frames=diffusion_frames,
+                    total_frames=total_frames,
+                    width=width,
+                    height=height,
+                    seq_idx=seq_idx,
+                    is_chapter_start=is_ch_start,
+                    is_chapter_end=is_ch_end,
+                    total_chunks=total_chunks,
+                    chapter_title=chapter_title,
+                    chapter_subtitle=chapter_subtitle,
+                    gamma_lut=gamma_lut,
+                    on_frame=_stream_frame,
+                )
+                render_state["kinetic_theme"] = f"cloud_diffusion_{used_engine}"
+            else:
+                logger.info("Using local cel-shaded animation fallback for chunk %s (cloud_mode=%s)", chunk_id, cloud_mode)
+                renderer = AnimeSceneRenderer(width=width, height=height, fps=fps)
+                render_state = renderer.render_sequence(
+                    prompt=clean_prompt,
+                    total_frames=total_frames,
+                    seq_idx=seq_idx,
+                    total_chunks=total_chunks,
+                    chunk_id=chunk_id,
+                    duration_sec=duration_sec,
+                    model_name=model_name,
+                    is_chapter_start=is_ch_start,
+                    is_chapter_end=is_ch_end,
+                    chapter_title=chapter_title,
+                    chapter_subtitle=chapter_subtitle,
+                    prev_video_code=prev_video_code,
+                    gamma_lut=gamma_lut,
+                    on_frame=_stream_frame,
+                )
         finally:
             if proc.stdin:
                 proc.stdin.close()

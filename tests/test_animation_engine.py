@@ -60,8 +60,9 @@ def test_anime_scene_renderer_produces_genuine_motion():
         assert max(deltas) > 1.0, f"Expected real frame motion for {expected_arch}, got deltas={deltas}"
 
 
-def test_worker_runner_renders_animated_mp4_with_handoff():
-    """Verify WorkerRunner pipes AnimeSceneRenderer output to H.264 MP4 cleanly."""
+def test_worker_runner_renders_animated_mp4_with_handoff(monkeypatch):
+    """Verify WorkerRunner pipes fallback AnimeSceneRenderer output to H.264 MP4 cleanly when cloud diffusion is off."""
+    monkeypatch.setenv("FREECLOUD_CLOUD_DIFFUSION", "off")
     runner = WorkerRunner(backend_url="http://127.0.0.1:8000", worker_id="test_anim_worker", model="minimax_h3")
     with tempfile.TemporaryDirectory() as tmpdir:
         out_mp4 = os.path.join(tmpdir, "anim_chunk.mp4")
