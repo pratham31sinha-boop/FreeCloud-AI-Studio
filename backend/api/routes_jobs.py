@@ -114,6 +114,8 @@ def get_act_anchor_image(job_id: str, seq_idx: int):
 
     req_w = getattr(job.request, "width", 1920) if job else 1920
     req_h = getattr(job.request, "height", 1080) if job else 1080
+    ch_idx = job.chunks[seq_idx].chapter_index if (job and 0 <= seq_idx < len(job.chunks)) else 0
+    is_ch_start = job.chunks[seq_idx].is_chapter_start if (job and 0 <= seq_idx < len(job.chunks)) else (seq_idx == 0)
 
     anchor_path = storage_manager.get_or_create_act_anchor(
         job_id=job_id,
@@ -122,6 +124,8 @@ def get_act_anchor_image(job_id: str, seq_idx: int):
         seed=m_seed,
         width=req_w,
         height=req_h,
+        chapter_idx=ch_idx,
+        is_chapter_start=is_ch_start,
     )
     return FileResponse(
         path=str(anchor_path),

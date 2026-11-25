@@ -196,3 +196,43 @@ def test_word_boundary_prompt_beats_and_multi_model_relay():
     assert "EXTENDED CLIP" in chunks[1].prompt_segment
 
 
+def test_ten_minute_documentary_chapter_parallel_dag():
+    """Verify a 10-minute documentary produces 40 chunks across 8 parallelizable chapters."""
+    req = JobRequest(
+        story_prompt=(
+            "Cosmos Documentary: From the Big Bang and Nebula Nurseries to Black Holes, "
+            "Dying Stars, and the Deep Space Horizon"
+        ),
+        duration_minutes=10.0,
+        anime_style="wan_2_1_realistic",
+        model_name="auto_relay",
+        model_relay=True,
+        width=1920,
+        height=1080,
+        execution_mode="hybrid",
+    )
+    chunks = plan_task_chunks("test_doc_10m_001", req, target_chunk_sec=15.0)
+    assert len(chunks) == 40
+
+    chapter_heads = [c for c in chunks if c.is_chapter_start]
+    extended_shots = [c for c in chunks if not c.is_chapter_start]
+    assert len(chapter_heads) == 8
+    assert len(extended_shots) == 32
+
+    for ch in chapter_heads:
+        assert ch.depends_on_chunk_index is None
+        assert ch.is_extended_clip is False
+
+    for shot in extended_shots:
+        assert shot.depends_on_chunk_index == shot.sequence_index - 1
+        assert shot.is_extended_clip is True
+        assert "EXTENDED CLIP" in shot.prompt_segment
+
+    titles = [ch.chapter_title for ch in chapter_heads]
+    assert len(set(titles)) == 8
+    assert all(title for title in titles)
+    # Ensure no false substring collisions from unrelated beats like predator/cat
+    assert all("predator" not in c.prompt_segment.lower() for c in chunks)
+
+
+

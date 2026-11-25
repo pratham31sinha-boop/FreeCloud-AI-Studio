@@ -34,17 +34,28 @@ jobs:
   worker_matrix:
     name: "Worker Runner ${{ matrix.worker_index }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        worker_index: [1, 2, 3, 4]
+        worker_index: [1, 2, 3, 4, 5, 6, 7, 8]
 
     steps:
+      - name: Check Worker Index vs Target Count
+        id: check_active
+        run: |
+          if [ "${{ matrix.worker_index }}" -le "${{ inputs.worker_count }}" ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout FreeCloud Repository
+        if: steps.check_active.outputs.active == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python with Cached Worker Deps
+        if: steps.check_active.outputs.active == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -52,10 +63,12 @@ jobs:
           cache-dependency-path: "requirements-worker.txt"
 
       - name: Install Fast Worker Dependencies
+        if: steps.check_active.outputs.active == 'true'
         run: |
           pip install --disable-pip-version-check -q -r requirements-worker.txt
 
       - name: Execute Turbo Worker Runner Entrypoint
+        if: steps.check_active.outputs.active == 'true'
         env:
           FREECLOUD_BACKEND_URL: ${{ inputs.backend_url }}
           FREECLOUD_JOB_ID: ${{ inputs.job_id }}
@@ -66,4 +79,4 @@ jobs:
             --job-id "$FREECLOUD_JOB_ID" \
             --worker-id "$WORKER_ID" \
             --model "${{ inputs.model_name }}" \
-            --max-idle-seconds 60
+            --max-idle-seconds 90

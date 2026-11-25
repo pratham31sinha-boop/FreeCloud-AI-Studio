@@ -56,6 +56,7 @@ class WorkerOrchestrator:
     """Manages the full lifecycle of distributed rendering workers and task chunks."""
 
     def __init__(self, dispatcher: Optional[BaseWorkerDispatcher] = None):
+        self._lock = threading.RLock()
         self.jobs: Dict[str, JobRecord] = {}
         self.workers: Dict[str, WorkerNode] = {}
         if dispatcher:
@@ -69,7 +70,7 @@ class WorkerOrchestrator:
     def _save_jobs_to_disk(self) -> None:
         try:
             p = settings.data_dir / "jobs_registry.json"
-            tmp_p = settings.data_dir / "jobs_registry.json.tmp"
+            tmp_p = settings.data_dir / f"jobs_registry.{os.getpid()}.{threading.get_ident()}.tmp"
             data = {jid: j.model_dump() for jid, j in self.jobs.items()}
             with open(tmp_p, "w", encoding="utf-8") as f:
                 json.dump(data, f, default=str, indent=2)
@@ -114,34 +115,43 @@ class WorkerOrchestrator:
         )
         self.jobs[job_id] = record
 
-        # Pre-synthesize Master Character Anchor and initial Act 0 Anchor in target resolution
+        # Pre-synthesize Master Character Anchor and all independent Chapter-Start Anchors
         clean_story = (request.story_prompt or "").strip()
         m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
         req_w = getattr(request, "width", 1920)
         req_h = getattr(request, "height", 1080)
+        chapter_head_chunks = [c for c in chunks if c.depends_on_chunk_index is None]
+        if not chapter_head_chunks and chunks:
+            chapter_head_chunks = [chunks[0]]
         try:
             storage_manager.get_or_create_master_anchor(
                 job_id=job_id, prompt=clean_story, seed=m_seed, width=req_w, height=req_h
             )
-            storage_manager.get_or_create_act_anchor(
-                job_id=job_id,
-                seq_idx=0,
-                prompt=chunks[0].prompt_segment if chunks else clean_story,
-                seed=m_seed,
-                width=req_w,
-                height=req_h,
-            )
+            for head_c in chapter_head_chunks:
+                storage_manager.get_or_create_act_anchor(
+                    job_id=job_id,
+                    seq_idx=head_c.sequence_index,
+                    prompt=head_c.prompt_segment or clean_story,
+                    seed=m_seed,
+                    width=req_w,
+                    height=req_h,
+                    chapter_idx=head_c.chapter_index,
+                    is_chapter_start=head_c.is_chapter_start,
+                )
         except Exception as anchor_err:
-            logger.warning("Could not pre-synthesize initial master anchor: %s", anchor_err)
+            logger.warning("Could not pre-synthesize initial chapter anchors: %s", anchor_err)
 
         # Dispatch workers according to execution_mode
         record.status = JobStatus.ORCHESTRATING
         exec_mode = getattr(request, "execution_mode", "cloud_github") or "cloud_github"
         model_to_use = getattr(request, "model_name", "wan_2_1")
+        local_worker_slots = 2 if len(chapter_head_chunks) > 1 else 1
 
         if exec_mode == "independent_turbo":
-            record.stage_message = "Starting Independent Turbo Engine (Zero External Dependencies)"
-            dispatch_result = self._spawn_local_turbo_worker(job_id=job_id, model_name=model_to_use)
+            record.stage_message = f"Starting Independent Turbo Engine ({local_worker_slots} parallel pipeline(s))"
+            dispatch_result = self._spawn_local_turbo_worker(
+                job_id=job_id, model_name=model_to_use, count=local_worker_slots
+            )
         elif exec_mode == "hybrid":
             record.stage_message = f"Starting Hybrid Instant + {target_workers} Cloud Nodes"
             dispatch_result = await self.dispatcher.dispatch_workers(
@@ -152,7 +162,9 @@ class WorkerOrchestrator:
                     "model_name": model_to_use,
                 },
             )
-            self._spawn_local_turbo_worker(job_id=job_id, model_name=model_to_use)
+            self._spawn_local_turbo_worker(
+                job_id=job_id, model_name=model_to_use, count=local_worker_slots
+            )
         else:
             record.stage_message = f"Orchestrating {target_workers} cloud workers"
             dispatch_result = await self.dispatcher.dispatch_workers(
@@ -175,39 +187,44 @@ class WorkerOrchestrator:
         self._save_jobs_to_disk()
         return record
 
-    def _spawn_local_turbo_worker(self, job_id: str, model_name: str = "wan_2_1") -> Dict[str, Any]:
-        """Launch a fast independent local worker subprocess tied to this job."""
+    def _spawn_local_turbo_worker(
+        self, job_id: str, model_name: str = "wan_2_1", count: int = 1
+    ) -> Dict[str, Any]:
+        """Launch fast independent local worker subprocess(es) tied to this job."""
         try:
             entrypoint = settings.base_dir / "github" / "worker_entrypoint.py"
             if not entrypoint.is_file():
                 return {"dispatched": False, "error": "worker_entrypoint.py not found"}
-            worker_id = f"turbo-local-{job_id}"
             local_url = f"http://127.0.0.1:{settings.port}"
-            cmd = [
-                sys.executable,
-                str(entrypoint),
-                "--backend-url",
-                local_url,
-                "--job-id",
-                job_id,
-                "--worker-id",
-                worker_id,
-                "--model",
-                model_name if model_name in ("wan_2_1", "minimax_h3", "hunyuan_video") else "wan_2_1",
-                "--max-idle-seconds",
-                "12",
-            ]
+            worker_ids = []
             env = os.environ.copy()
             env["FREECLOUD_TURBO_MODE"] = "1"
-            subprocess.Popen(
-                cmd,
-                cwd=str(settings.base_dir),
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            return {"dispatched": True, "mode": "independent_turbo", "worker_id": worker_id}
+            for i in range(max(1, min(2, count))):
+                worker_id = f"turbo-local-{job_id}-{i + 1}" if count > 1 else f"turbo-local-{job_id}"
+                cmd = [
+                    sys.executable,
+                    str(entrypoint),
+                    "--backend-url",
+                    local_url,
+                    "--job-id",
+                    job_id,
+                    "--worker-id",
+                    worker_id,
+                    "--model",
+                    model_name if model_name in ("wan_2_1", "minimax_h3", "hunyuan_video", "auto_relay") else "wan_2_1",
+                    "--max-idle-seconds",
+                    "30",
+                ]
+                subprocess.Popen(
+                    cmd,
+                    cwd=str(settings.base_dir),
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                worker_ids.append(worker_id)
+            return {"dispatched": True, "mode": "independent_turbo", "worker_ids": worker_ids}
         except Exception as exc:
             logger.error("Failed spawning independent turbo worker: %s", exc)
             return {"dispatched": False, "error": str(exc)}
@@ -252,99 +269,103 @@ class WorkerOrchestrator:
         character_registry: Optional[dict] = None,
         job_id: Optional[str] = None,
     ) -> TaskLeaseResponse:
-        """Lease the next available unassigned task chunk to a ready worker."""
-        self.clean_stale_leases()
-        worker = self.workers.get(worker_id)
-        if not worker:
-            return TaskLeaseResponse(has_task=False, message="Worker not registered")
+        """Lease the next available unassigned task chunk to a ready worker atomically."""
+        with self._lock:
+            self.clean_stale_leases()
+            worker = self.workers.get(worker_id)
+            if not worker:
+                return TaskLeaseResponse(has_task=False, message="Worker not registered")
 
-        # Prioritize target job (if specified) and newest jobs first
-        ordered_jobs = sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
-        for job in ordered_jobs:
-            if job_id and job.job_id != job_id:
-                continue
-            if job.status not in (JobStatus.ORCHESTRATING, JobStatus.RENDERING):
-                continue
+            # Prioritize target job (if specified) and newest jobs first
+            ordered_jobs = sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
+            for job in ordered_jobs:
+                if job_id and job.job_id != job_id:
+                    continue
+                if job.status not in (JobStatus.ORCHESTRATING, JobStatus.RENDERING):
+                    continue
 
-            for chunk in job.chunks:
-                if chunk.status in (TaskChunkStatus.PENDING, TaskChunkStatus.RETRYING):
-                    # Extend Clip Technology (Sequential Video Extension):
-                    # Chunk 0 is leased immediately to the first available cloud runner.
-                    # Chunk N (N > 0) can ONLY be leased once Chunk N-1 has COMPLETED
-                    # and its final frame has been extracted and set as anchor/N.
-                    if chunk.sequence_index > 0:
-                        prev_chunk = next((c for c in job.chunks if c.sequence_index == chunk.sequence_index - 1), None)
-                        if not prev_chunk or prev_chunk.status != TaskChunkStatus.COMPLETED:
-                            continue  # Wait for preceding clip to finish and hand off its last frame
+                for chunk in job.chunks:
+                    if chunk.status in (TaskChunkStatus.PENDING, TaskChunkStatus.RETRYING):
+                        dep_idx = chunk.depends_on_chunk_index
+                        if dep_idx is None and chunk.sequence_index > 0 and not chunk.is_chapter_start:
+                            dep_idx = chunk.sequence_index - 1
+                        if dep_idx is not None:
+                            prev_chunk = next((c for c in job.chunks if c.sequence_index == dep_idx), None)
+                            if not prev_chunk or prev_chunk.status != TaskChunkStatus.COMPLETED:
+                                continue
 
-                    # Lease this chunk
-                    now = time.time()
-                    chunk.status = TaskChunkStatus.ASSIGNED
-                    chunk.assigned_worker_id = worker_id
-                    chunk.lease_expires_at = now + settings.worker_task_lease_sec
-                    chunk.attempts += 1
-                    chunk.updated_at = now
+                        # Lease this chunk atomically
+                        now = time.time()
+                        chunk.status = TaskChunkStatus.ASSIGNED
+                        chunk.assigned_worker_id = worker_id
+                        chunk.lease_expires_at = now + settings.worker_task_lease_sec
+                        chunk.attempts += 1
+                        chunk.updated_at = now
 
-                    worker.state = WorkerState.BUSY
-                    worker.current_chunk_id = chunk.chunk_id
-                    worker.assigned_job_id = job.job_id
+                        worker.state = WorkerState.BUSY
+                        worker.current_chunk_id = chunk.chunk_id
+                        worker.assigned_job_id = job.job_id
 
-                    # Populate character reference bundles
-                    char_bundles: List[CharacterReferenceBundle] = []
-                    if character_registry:
-                        for cid in chunk.character_ids:
-                            profile = character_registry.get(cid, {})
-                            char_bundles.append(
-                                CharacterReferenceBundle(
-                                    character_id=cid,
-                                    name=profile.get("name", cid),
-                                    hair_style=profile.get("hair_style", "anime standard"),
-                                    clothing_palette=profile.get("clothing_palette", "original serial palette"),
-                                    face_image_urls=profile.get("reference_urls", []),
-                                    lora_trigger_word=profile.get("lora_trigger"),
+                        char_bundles: List[CharacterReferenceBundle] = []
+                        if character_registry:
+                            for cid in chunk.character_ids:
+                                profile = character_registry.get(cid, {})
+                                char_bundles.append(
+                                    CharacterReferenceBundle(
+                                        character_id=cid,
+                                        name=profile.get("name", cid),
+                                        hair_style=profile.get("hair_style", "anime standard"),
+                                        clothing_palette=profile.get("clothing_palette", "original serial palette"),
+                                        face_image_urls=profile.get("reference_urls", []),
+                                        lora_trigger_word=profile.get("lora_trigger"),
+                                    )
                                 )
-                            )
 
-                    clean_story = (job.request.story_prompt or "").strip()
-                    m_seed = abs(hash(f"{job.job_id}_{clean_story[:40]}")) % 1000000
+                        clean_story = (job.request.story_prompt or "").strip()
+                        m_seed = abs(hash(f"{job.job_id}_{clean_story[:40]}")) % 1000000
 
-                    return TaskLeaseResponse(
-                        has_task=True,
-                        job_id=job.job_id,
-                        chunk_id=chunk.chunk_id,
-                        sequence_index=chunk.sequence_index,
-                        start_sec=chunk.start_sec,
-                        end_sec=chunk.end_sec,
-                        duration_sec=chunk.duration_sec,
-                        prompt_segment=chunk.prompt_segment,
-                        anime_style=chunk.anime_style,
-                        model_name=getattr(chunk, "model_name", getattr(job.request, "model_name", "wan_2_1")),
-                        width=getattr(job.request, "width", 1920),
-                        height=getattr(job.request, "height", 1080),
-                        anchor_frame_url=chunk.anchor_frame_url or f"/api/v1/jobs/{job.job_id}/anchor/{chunk.sequence_index}",
-                        video_code_url=(
-                            f"/api/v1/jobs/{job.job_id}/video-code/{chunk.sequence_index - 1}"
-                            if chunk.sequence_index > 0
-                            else None
-                        ),
-                        is_extended_clip=bool(getattr(chunk, "is_extended_clip", chunk.sequence_index > 0)),
-                        previous_chunk_id=getattr(chunk, "previous_chunk_id", None),
-                        previous_video_code=getattr(chunk, "previous_video_code", None),
-                        master_seed=m_seed,
-                        characters=char_bundles,
-                        total_chunks=len(job.chunks),
-                        total_duration_sec=float(job.request.duration_minutes * 60.0),
-                        motion_guidance={
-                            "tracking_enabled": job.request.continuity_motion_tracking,
-                            "motion_reference_id": chunk.motion_reference_id,
-                            "original_video_id": job.request.original_video_id,
-                        },
-                        lease_expires_at=chunk.lease_expires_at,
-                        artifact_upload_url=f"/api/v1/workers/{worker_id}/chunks/{chunk.chunk_id}/artifact",
-                        message="Task chunk leased successfully",
-                    )
+                        return TaskLeaseResponse(
+                            has_task=True,
+                            job_id=job.job_id,
+                            chunk_id=chunk.chunk_id,
+                            sequence_index=chunk.sequence_index,
+                            start_sec=chunk.start_sec,
+                            end_sec=chunk.end_sec,
+                            duration_sec=chunk.duration_sec,
+                            prompt_segment=chunk.prompt_segment,
+                            anime_style=chunk.anime_style,
+                            model_name=getattr(chunk, "model_name", getattr(job.request, "model_name", "wan_2_1")),
+                            width=getattr(job.request, "width", 1920),
+                            height=getattr(job.request, "height", 1080),
+                            anchor_frame_url=chunk.anchor_frame_url or f"/api/v1/jobs/{job.job_id}/anchor/{chunk.sequence_index}",
+                            video_code_url=(
+                                f"/api/v1/jobs/{job.job_id}/video-code/{chunk.depends_on_chunk_index}"
+                                if chunk.depends_on_chunk_index is not None
+                                else (f"/api/v1/jobs/{job.job_id}/video-code/{chunk.sequence_index - 1}" if (chunk.sequence_index > 0 and not chunk.is_chapter_start) else None)
+                            ),
+                            is_extended_clip=bool(getattr(chunk, "is_extended_clip", False)),
+                            chapter_index=getattr(chunk, "chapter_index", 0),
+                            chapter_title=getattr(chunk, "chapter_title", None),
+                            chapter_subtitle=getattr(chunk, "chapter_subtitle", None),
+                            is_chapter_start=bool(getattr(chunk, "is_chapter_start", chunk.sequence_index == 0)),
+                            is_chapter_end=bool(getattr(chunk, "is_chapter_end", False)),
+                            previous_chunk_id=getattr(chunk, "previous_chunk_id", None),
+                            previous_video_code=getattr(chunk, "previous_video_code", None),
+                            master_seed=m_seed,
+                            characters=char_bundles,
+                            total_chunks=len(job.chunks),
+                            total_duration_sec=float(job.request.duration_minutes * 60.0),
+                            motion_guidance={
+                                "tracking_enabled": job.request.continuity_motion_tracking,
+                                "motion_reference_id": chunk.motion_reference_id,
+                                "original_video_id": job.request.original_video_id,
+                            },
+                            lease_expires_at=chunk.lease_expires_at,
+                            artifact_upload_url=f"/api/v1/workers/{worker_id}/chunks/{chunk.chunk_id}/artifact",
+                            message="Task chunk leased successfully",
+                        )
 
-        return TaskLeaseResponse(has_task=False, message="No pending chunks in queue")
+            return TaskLeaseResponse(has_task=False, message="No pending chunks in queue")
 
     def submit_chunk_result(self, req: ChunkCompletionRequest) -> bool:
         """Mark a task chunk as completed and check for overall job completion."""
@@ -369,10 +390,17 @@ class WorkerOrchestrator:
         chunk.updated_at = now
 
         # EXTEND CLIP + VIDEO-AS-CODE CONTINUITY HANDOFF:
-        # Extract BOTH the exact last frame image AND complete programmatic video state
-        # ('video in the form of coding') to pass to the next model with explicit extended prompt.
+        # Extract Video-as-Code state for this clip; hand off the exact ending frame + coded state
+        # when the next chunk continues this chapter/chain (do not overwrite a new chapter's landscape anchor).
         next_seq = chunk.sequence_index + 1
         next_chunk = next((c for c in job.chunks if c.sequence_index == next_seq), None)
+        should_extend_next = bool(
+            next_chunk
+            and (
+                next_chunk.depends_on_chunk_index == chunk.sequence_index
+                or (next_chunk.depends_on_chunk_index is None and not next_chunk.is_chapter_start)
+            )
+        )
         clean_story = (job.request.story_prompt or "").strip()
         m_seed = abs(hash(f"{job.job_id}_{clean_story[:40]}")) % 1000000
 
@@ -380,7 +408,11 @@ class WorkerOrchestrator:
         extracted_code: Optional[Dict[str, Any]] = req.video_code
 
         if artifact_file and artifact_file.is_file():
-            anchor_target = storage_manager.artifacts_dir / f"{job.job_id}_anchor_act_{next_seq}.png"
+            anchor_target = (
+                storage_manager.artifacts_dir / f"{job.job_id}_anchor_act_{next_seq}.png"
+                if should_extend_next
+                else storage_manager.artifacts_dir / f"{job.job_id}_endframe_seq_{chunk.sequence_index}.png"
+            )
             code_target = storage_manager.get_video_code_path(job.job_id, chunk.sequence_index)
             ok, bundle_code = extract_handoff_bundle_from_mp4(
                 artifact_path=artifact_file,
@@ -409,7 +441,7 @@ class WorkerOrchestrator:
         if not chunk.video_code and extracted_code:
             chunk.video_code = extracted_code
 
-        if next_chunk:
+        if should_extend_next and next_chunk:
             next_chunk.anchor_frame_url = f"/api/v1/jobs/{job.job_id}/anchor/{next_seq}"
             next_chunk.is_extended_clip = True
             next_chunk.previous_chunk_id = chunk.chunk_id
@@ -429,27 +461,34 @@ class WorkerOrchestrator:
                 getattr(next_chunk, "model_name", "wan_2_1"),
             )
 
-        worker = self.workers.get(req.worker_id)
-        if worker:
-            worker.state = WorkerState.IDLE
-            worker.current_chunk_id = None
-            worker.total_completed += 1
+        should_assemble = False
+        with self._lock:
+            worker = self.workers.get(req.worker_id)
+            if worker:
+                worker.state = WorkerState.IDLE
+                worker.current_chunk_id = None
+                worker.total_completed += 1
 
-        # Update job progress
-        job.completed_chunks = sum(
-            1 for c in job.chunks if c.status == TaskChunkStatus.COMPLETED
-        )
-        if job.total_chunks > 0:
-            job.progress_percent = round(
-                (job.completed_chunks / job.total_chunks) * 90.0, 1
+            # Update job progress
+            job.completed_chunks = sum(
+                1 for c in job.chunks if c.status == TaskChunkStatus.COMPLETED
             )
-        job.updated_at = now
+            if job.total_chunks > 0:
+                job.progress_percent = round(
+                    (job.completed_chunks / job.total_chunks) * 90.0, 1
+                )
+            job.updated_at = now
 
-        # If all chunks are completed, assemble final video once
-        if job.completed_chunks == job.total_chunks and job.status not in (JobStatus.ASSEMBLING, JobStatus.COMPLETED):
+            if job.completed_chunks == job.total_chunks and job.status not in (JobStatus.ASSEMBLING, JobStatus.COMPLETED):
+                job.status = JobStatus.ASSEMBLING
+                should_assemble = True
+
+            self._save_jobs_to_disk()
+
+        if should_assemble:
             self._assemble_final_video(job)
+            self._save_jobs_to_disk()
 
-        self._save_jobs_to_disk()
         return True
 
     def report_chunk_failure(self, req: ChunkFailureRequest) -> bool:

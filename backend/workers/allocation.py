@@ -145,27 +145,64 @@ def plan_task_chunks(
     chunks: List[TaskChunk] = []
     current_time = 0.0
 
+    from backend.generation.documentary_planner import (
+        build_documentary_plan,
+        is_documentary_job,
+    )
+
+    use_documentary = is_documentary_job(request.story_prompt, request.duration_minutes)
+    doc_plan = (
+        build_documentary_plan(request.story_prompt, total_seconds, calculated_chunks)
+        if use_documentary
+        else None
+    )
     act_beats = generate_progressive_act_beats(request.story_prompt, total_acts=calculated_chunks)
     req_model = getattr(request, "model_name", "wan_2_1") or "wan_2_1"
     use_relay = bool(getattr(request, "model_relay", False) or req_model == "auto_relay")
 
     for idx in range(calculated_chunks):
         end_time = min(total_seconds, current_time + chunk_duration)
-        beat_text = act_beats[idx % len(act_beats)]
         chunk_model = RELAY_MODEL_SEQUENCE[idx % len(RELAY_MODEL_SEQUENCE)] if use_relay else req_model
 
-        # Unified continuous scene prompt with progressive act continuation
-        if idx == 0:
-            scene_prompt = (
-                f"[Act {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
-                f"{request.story_prompt.strip()} -- {beat_text}"
-            )
+        if doc_plan:
+            p_item = doc_plan[idx]
+            ch_idx = p_item["chapter_index"]
+            ch_title = p_item["chapter_title"]
+            ch_sub = p_item["chapter_subtitle"]
+            is_ch_start = p_item["is_chapter_start"]
+            is_ch_end = p_item["is_chapter_end"]
+            dep_idx = p_item["depends_on_chunk_index"]
+            beat_text = p_item["chapter_beat"]
+            if is_ch_start:
+                scene_prompt = (
+                    f"[{ch_title} | Shot {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
+                    f"{request.story_prompt.strip()} -- {beat_text}"
+                )
+            else:
+                scene_prompt = (
+                    f"[EXTENDED CLIP {idx + 1}/{calculated_chunks} ({ch_title}) | "
+                    f"Continuing seamlessly from Shot {idx} Last Frame Image & Coded Video State ({current_time:.1f}s-{end_time:.1f}s)] "
+                    f"Next Scene Continuation: {beat_text} | Documentary Subject: {request.story_prompt.strip()}"
+                )
         else:
-            scene_prompt = (
-                f"[EXTENDED CLIP {idx + 1}/{calculated_chunks} | Continuing seamlessly from Clip {idx} "
-                f"Last Frame Image & Coded Video State ({current_time:.1f}s-{end_time:.1f}s)] "
-                f"Next Scene Continuation: {beat_text} | Original Story Prompt: {request.story_prompt.strip()}"
-            )
+            ch_idx = 0
+            ch_title = None
+            ch_sub = None
+            is_ch_start = (idx == 0)
+            is_ch_end = (idx == calculated_chunks - 1)
+            dep_idx = None if idx == 0 else (idx - 1)
+            beat_text = act_beats[idx % len(act_beats)]
+            if idx == 0:
+                scene_prompt = (
+                    f"[Act {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
+                    f"{request.story_prompt.strip()} -- {beat_text}"
+                )
+            else:
+                scene_prompt = (
+                    f"[EXTENDED CLIP {idx + 1}/{calculated_chunks} | Continuing seamlessly from Clip {idx} "
+                    f"Last Frame Image & Coded Video State ({current_time:.1f}s-{end_time:.1f}s)] "
+                    f"Next Scene Continuation: {beat_text} | Original Story Prompt: {request.story_prompt.strip()}"
+                )
 
         chunk = TaskChunk(
             chunk_id=f"{job_id}_chk_{idx + 1:03d}_{uuid.uuid4().hex[:6]}",
@@ -178,7 +215,13 @@ def plan_task_chunks(
             anime_style=str(request.anime_style),
             model_name=chunk_model,
             anchor_frame_url=f"/api/v1/jobs/{job_id}/anchor/{idx}",
-            is_extended_clip=(idx > 0),
+            is_extended_clip=(dep_idx is not None),
+            depends_on_chunk_index=dep_idx,
+            chapter_index=ch_idx,
+            chapter_title=ch_title,
+            chapter_subtitle=ch_sub,
+            is_chapter_start=is_ch_start,
+            is_chapter_end=is_ch_end,
             character_ids=list(request.character_ids),
             motion_reference_id=f"motion_{job_id}_seq_{idx:03d}" if request.continuity_motion_tracking else None,
             status=TaskChunkStatus.PENDING,

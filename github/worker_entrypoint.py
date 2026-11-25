@@ -729,10 +729,14 @@ class WorkerRunner:
         total_chunks = max(1, int(lease.get("total_chunks", 4) if lease else 4))
         model_name = (lease.get("model_name") or self.model_name or "wan_2_1").lower() if lease else self.model_name.lower()
         is_extended = bool(lease.get("is_extended_clip", seq_idx > 0)) if lease else False
+        is_ch_start = bool(lease.get("is_chapter_start", False)) if lease else False
+        is_ch_end = bool(lease.get("is_chapter_end", False)) if lease else False
+        chapter_title = lease.get("chapter_title") if lease else None
+        chapter_subtitle = lease.get("chapter_subtitle") if lease else None
 
-        clean_prompt = re.sub(r"\[(Scene|Part|Act|EXTENDED CLIP)[^\]]*\]", "", prompt or "").strip()
+        clean_prompt = re.sub(r"\[(CHAPTER|Scene|Part|Act|EXTENDED CLIP)[^\]]*\]", "", prompt or "").strip()
         if not clean_prompt:
-            clean_prompt = "Cinematic anime masterpiece, 8k resolution"
+            clean_prompt = "Cinematic documentary masterpiece, 8k resolution"
 
         # Optional cloud diffusion ONLY when explicitly opted-in (never stalls independent execution)
         enable_zerogpu = os.getenv("FREECLOUD_ENABLE_ZEROGPU", "false").lower() == "true"
@@ -828,21 +832,47 @@ class WorkerRunner:
         l_tmp = np.empty((gh, gw), dtype=np.float32)
         glow_s = np.zeros((lh, lw, 3), dtype=np.uint8)
 
+        # Pre-render optional Documentary Chapter Lower-Third Slate (only computed once -> <0.15ms blend/frame)
+        slate_roi = None
+        slate_rect = None
+        if is_ch_start and chapter_title:
+            sl_w = min(int(width * 0.62), 1180)
+            sl_h = int(round(108 * scale_factor / 3.0))
+            sl_h = max(72, min(140, sl_h))
+            sl_x = int(width * 0.045)
+            sl_y = height - bar_bottom - sl_h - int(28 * scale_factor / 3.0)
+            slate_img = np.zeros((sl_h, sl_w, 3), dtype=np.uint8)
+            slate_img[:] = (18, 16, 22)
+            # Accent vertical bar (golden amber)
+            cv2.rectangle(slate_img, (0, 0), (8, sl_h), (70, 200, 255), -1)
+            font_scale_t = max(0.55, 0.28 * scale_factor)
+            font_scale_s = max(0.42, 0.20 * scale_factor)
+            cv2.putText(slate_img, chapter_title, (24, int(sl_h * 0.44)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_t, (245, 250, 255), 2, cv2.LINE_AA)
+            if chapter_subtitle:
+                cv2.putText(slate_img, chapter_subtitle, (24, int(sl_h * 0.80)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_s, (180, 225, 245), 1, cv2.LINE_AA)
+            slate_roi = slate_img
+            slate_rect = (sl_x, sl_y, sl_w, sl_h)
+
         proc = self._open_ffmpeg_pipe(width, height, fps, temp_audio_path if has_audio else None, output_path)
         end_stride_phase = init_stride_phase
         end_breath_phase = init_breath_phase
         end_flare_t = init_flare_t
-        end_zoom = 1.08
+        prev_end_zoom = float(prev_cam.get("end_zoom", 1.0)) if prev_cam else 1.0
+        end_zoom = prev_end_zoom
 
         try:
             for idx in range(total_frames):
                 t_chunk = idx / max(1, total_frames - 1)
                 flare_t = init_flare_t + t_chunk * duration_sec
 
-                # For extended clips, relative camera transform starts at identity (zoom=1.0, dx=0, dy=0)
-                rel_zoom = 1.0 + 0.08 * t_chunk
-                pan_shift_x = t_chunk * 18.0 * scale_factor
-                pan_shift_y = -t_chunk * 6.0 * scale_factor
+                # Bounded camera choreography (prevents cumulative zoom distortion over 40+ clips)
+                if prev_end_zoom > 1.18:
+                    rel_zoom = 1.0 + 0.015 * math.sin(math.pi * t_chunk)
+                else:
+                    rel_zoom = 1.0 + 0.055 * t_chunk
+                pan_dir = 1.0 if (seq_idx % 2 == 0) else -0.65
+                pan_shift_x = t_chunk * 16.0 * scale_factor * pan_dir
+                pan_shift_y = -t_chunk * 5.0 * scale_factor
                 roll_deg = 0.0
 
                 np.copyto(lmx, lgx_full)
@@ -862,16 +892,16 @@ class WorkerRunner:
                     stride_phase = init_stride_phase + 2.0 * math.pi * 1.8 * freq_scale * t_chunk
                     breath_phase = init_breath_phase + 2.0 * math.pi * 0.8 * freq_scale * t_chunk
                     end_breath_phase = breath_phase
-                    np.multiply(paw_mask, 8.0 * scale_factor * math.sin(stride_phase), out=l_tmp)
+                    np.multiply(paw_mask, 7.0 * scale_factor * math.sin(stride_phase), out=l_tmp)
                     lmx += l_tmp
-                    np.multiply(head_mask, 2.5 * scale_factor * math.sin(breath_phase), out=l_tmp)
+                    np.multiply(head_mask, 2.2 * scale_factor * math.sin(breath_phase), out=l_tmp)
                     lmx += l_tmp
-                    np.multiply(body_mask, 2.5 * scale_factor * math.cos(breath_phase), out=l_tmp)
+                    np.multiply(body_mask, 2.2 * scale_factor * math.cos(breath_phase), out=l_tmp)
                     lmy += l_tmp
 
                 end_stride_phase = float(stride_phase % (2.0 * math.pi))
                 end_flare_t = float(flare_t)
-                end_zoom = float(prev_cam.get("end_zoom", 1.0) * rel_zoom) if prev_cam else float(rel_zoom)
+                end_zoom = float(prev_end_zoom * rel_zoom) if prev_cam else float(rel_zoom)
 
                 cx_t = width * 0.5 + pan_shift_x
                 cy_t = height * 0.5 + pan_shift_y
@@ -919,6 +949,27 @@ class WorkerRunner:
 
                 # LUT color grading in-place
                 cv2.LUT(frame, gamma_lut, dst=frame)
+
+                # Documentary Chapter Lower-Third Slate fade-in/out
+                if slate_roi is not None and slate_rect is not None and 6 <= idx <= min(total_frames - 12, 96):
+                    sx, sy, sw, sh = slate_rect
+                    if idx < 18:
+                        alpha = (idx - 6) / 12.0 * 0.78
+                    elif idx > 82:
+                        alpha = max(0.0, (96 - idx) / 14.0) * 0.78
+                    else:
+                        alpha = 0.78
+                    if alpha > 0.01:
+                        roi_dst = frame[sy : sy + sh, sx : sx + sw]
+                        cv2.addWeighted(slate_roi, alpha, roi_dst, 1.0 - alpha, 0.0, dst=roi_dst)
+
+                # Smooth multi-chapter cinema transitions (0.35s fade-in/dip)
+                if total_chunks >= 8:
+                    if is_ch_start and idx < 8:
+                        cv2.convertScaleAbs(frame, dst=frame, alpha=(idx + 1) / 8.0)
+                    elif is_ch_end and idx >= total_frames - 8:
+                        cv2.convertScaleAbs(frame, dst=frame, alpha=max(0.08, (total_frames - idx) / 8.0))
+
                 frame[:bar_top, :] = 0
                 frame[-bar_bottom:, :] = 0
 

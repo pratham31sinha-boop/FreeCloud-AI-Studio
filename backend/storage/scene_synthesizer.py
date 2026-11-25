@@ -15,18 +15,52 @@ import math
 import re
 import urllib.request
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
+CHAPTER_IMAGE_CATALOG: Dict[str, List[str]] = {
+    "cosmos": [
+        "https://images.pexels.com/photos/2150/sky-space-dark-galaxy.jpg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1169754/pexels-photo-1169754.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/956981/milky-way-starry-sky-night-sky-star-956981.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1252890/pexels-photo-1252890.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/816608/pexels-photo-816608.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/39561/solar-flare-sun-eruption-energy-39561.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/41162/moon-landing-apollo-11-nasa-buzz-aldrin-41162.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1274260/pexels-photo-1274260.jpeg?auto=compress&cs=tinysrgb&w=1920",
+    ],
+    "ocean": [
+        "https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/847393/pexels-photo-847393.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/3800117/pexels-photo-3800117.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/2422915/pexels-photo-2422915.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/3046637/pexels-photo-3046637.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1645028/pexels-photo-1645028.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/920157/pexels-photo-920157.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1556797/pexels-photo-1556797.jpeg?auto=compress&cs=tinysrgb&w=1920",
+    ],
+    "earth": [
+        "https://images.pexels.com/photos/1423600/pexels-photo-1423600.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/417173/pexels-photo-417173.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/2387873/pexels-photo-2387873.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/145939/pexels-photo-145939.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/3225517/pexels-photo-3225517.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/1366919/pexels-photo-1366919.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/355241/pexels-photo-355241.jpeg?auto=compress&cs=tinysrgb&w=1920",
+        "https://images.pexels.com/photos/3408744/pexels-photo-3408744.jpeg?auto=compress&cs=tinysrgb&w=1920",
+    ],
+}
+
 THEME_IMAGE_CATALOG: Dict[str, str] = {
     "hypercar": "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1920",
     "cyberpunk": "https://images.pexels.com/photos/3165335/pexels-photo-3165335.jpeg?auto=compress&cs=tinysrgb&w=1920",
     "forest": "https://images.pexels.com/photos/1423600/pexels-photo-1423600.jpeg?auto=compress&cs=tinysrgb&w=1920",
     "space": "https://images.pexels.com/photos/2150/sky-space-dark-galaxy.jpg?auto=compress&cs=tinysrgb&w=1920",
+    "ocean": "https://images.pexels.com/photos/1001682/pexels-photo-1001682.jpeg?auto=compress&cs=tinysrgb&w=1920",
     "wildlife": "https://images.pexels.com/photos/145939/pexels-photo-145939.jpeg?auto=compress&cs=tinysrgb&w=1920",
     "sunset": "https://images.pexels.com/photos/36717/amazing-animal-beautiful-beautifull.jpg?auto=compress&cs=tinysrgb&w=1920",
     "samurai": "https://images.pexels.com/photos/1440476/pexels-photo-1440476.jpeg?auto=compress&cs=tinysrgb&w=1920",
@@ -49,12 +83,14 @@ def classify_prompt_theme(prompt: str) -> str:
         return "hypercar"
     if has_word("cyberpunk", "neon", "tokyo", "cyborg", "hologram", "holograms", "hacker", "hoverbike", "futuristic"):
         return "cyberpunk"
-    if has_word("elven", "forest", "bioluminescence", "bioluminescent", "cathedral", "woods", "enchanted", "spirit", "fairy", "wings"):
+    if has_word("ocean", "sea", "abyss", "marine", "whale", "coral", "jellyfish", "reef", "pelagic", "waves"):
+        return "ocean"
+    if has_word("astronaut", "space", "alien", "planet", "galaxy", "mars", "cosmos", "nebula", "orbital", "mecha", "colony", "universe", "big bang", "black hole"):
+        return "space"
+    if has_word("elven", "forest", "bioluminescence", "bioluminescent", "cathedral", "woods", "enchanted", "spirit", "fairy", "wings", "aurora", "glacier"):
         return "forest"
     if has_word("samurai", "ronin", "katana", "shinobi", "ninja", "dojo", "bamboo", "blade", "swordswoman"):
         return "samurai"
-    if has_word("astronaut", "space", "alien", "planet", "galaxy", "mars", "cosmos", "nebula", "orbital", "mecha", "colony"):
-        return "space"
     if has_word("panther", "leopard", "tiger", "lion", "wolf", "jaguar", "predator", "feline"):
         return "wildlife"
     if has_word("train", "steam", "witch", "cottage", "ghibli"):
@@ -63,7 +99,7 @@ def classify_prompt_theme(prompt: str) -> str:
         return "martial"
     if has_word("dragon", "fire", "canyon", "castle", "sunset", "shinkai", "sky", "comet", "lake", "cherry"):
         return "sunset"
-    return "cyberpunk"
+    return "forest"
 
 
 def _fast_anime_stylize(img: np.ndarray) -> np.ndarray:
@@ -220,12 +256,14 @@ def resolve_scene_anchor(
     width: int = 1920,
     height: int = 1080,
     seq_idx: int = 0,
+    chapter_idx: Optional[int] = None,
 ) -> np.ndarray:
-    """Resolve an authentic 1080p visual anchor for the prompt (local cache -> domain asset -> offline artwork)."""
+    """Resolve an authentic 1080p visual anchor for the prompt (local cache -> domain/chapter asset -> offline artwork)."""
     theme = classify_prompt_theme(prompt)
     cache_dir = artifacts_dir.parent / "cache" / "themes"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cached_theme_img = cache_dir / f"theme_{theme}_{width}x{height}.png"
+    ch_key = f"_ch{chapter_idx}" if chapter_idx is not None else ""
+    cached_theme_img = cache_dir / f"theme_{theme}{ch_key}_{width}x{height}.png"
 
     # 1. Local Jagdhatri Keyframes (zero network, real character)
     if theme == "jagdhatri":
@@ -255,8 +293,18 @@ def resolve_scene_anchor(
                 img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
             return img
 
-    # 3. Fast curated domain fetch (max 3s timeout, saves to cache)
+    # 3. Fast curated domain / chapter fetch (max 3.5s timeout, saves to cache)
     url = THEME_IMAGE_CATALOG.get(theme)
+    if chapter_idx is not None:
+        if theme == "space":
+            cat_list = CHAPTER_IMAGE_CATALOG["cosmos"]
+            url = cat_list[chapter_idx % len(cat_list)]
+        elif theme == "ocean":
+            cat_list = CHAPTER_IMAGE_CATALOG["ocean"]
+            url = cat_list[chapter_idx % len(cat_list)]
+        elif theme in ("forest", "wildlife", "sunset"):
+            cat_list = CHAPTER_IMAGE_CATALOG["earth"]
+            url = cat_list[chapter_idx % len(cat_list)]
     if url:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -273,4 +321,5 @@ def resolve_scene_anchor(
             logger.debug("Fast curated fetch skipped/failed for %s: %s", theme, exc)
 
     # 4. 100% Independent crisp procedural 1080p artwork fallback
-    return synthesize_crisp_scene_anchor(prompt=prompt, seed=seed, width=width, height=height)
+    eff_seed = seed + ((chapter_idx or 0) * 131)
+    return synthesize_crisp_scene_anchor(prompt=prompt, seed=eff_seed, width=width, height=height)

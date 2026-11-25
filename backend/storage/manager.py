@@ -184,19 +184,23 @@ class StorageManager:
         return anchor_path
 
     def get_or_create_act_anchor(
-        self, job_id: str, seq_idx: int, prompt: str, seed: int = 42, width: int = 1920, height: int = 1080
+        self,
+        job_id: str,
+        seq_idx: int,
+        prompt: str,
+        seed: int = 42,
+        width: int = 1920,
+        height: int = 1080,
+        chapter_idx: Optional[int] = None,
+        is_chapter_start: bool = False,
     ) -> Path:
-        """Fetch or synthesize a story-progressive anchor image for a specific Act chunk (Full HD 1080p).
-        
-        For seq_idx > 0, this returns the exact final frame extracted from the previous chunk
-        (Extend Clip Technology).
-        """
+        """Fetch or synthesize a story-progressive anchor image for a specific Act or Chapter chunk."""
         anchor_path = self.artifacts_dir / f"{job_id}_anchor_act_{seq_idx}.png"
         if anchor_path.is_file() and anchor_path.stat().st_size > 1000:
             return anchor_path
 
-        # If seq_idx > 0 and no extended anchor is available yet, fall back to master anchor
-        if seq_idx > 0:
+        # Intra-chapter continuation chunks wait for Extend Clip handoff; if missing, fall back to chapter/master anchor
+        if seq_idx > 0 and not is_chapter_start:
             master_anchor = self.get_or_create_master_anchor(
                 job_id=job_id, prompt=prompt, seed=seed, width=width, height=height
             )
@@ -213,6 +217,7 @@ class StorageManager:
             width=width,
             height=height,
             seq_idx=seq_idx,
+            chapter_idx=chapter_idx,
         )
         cv2.imwrite(str(anchor_path), img)
         return anchor_path

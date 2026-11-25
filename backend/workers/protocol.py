@@ -74,6 +74,11 @@ class TaskLeaseResponse(BaseModel):
     anchor_frame_url: Optional[str] = None
     video_code_url: Optional[str] = None
     is_extended_clip: bool = False
+    chapter_index: int = 0
+    chapter_title: Optional[str] = None
+    chapter_subtitle: Optional[str] = None
+    is_chapter_start: bool = False
+    is_chapter_end: bool = False
     previous_chunk_id: Optional[str] = None
     previous_video_code: Optional[Dict[str, Any]] = None
     master_seed: Optional[int] = None
