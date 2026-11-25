@@ -114,7 +114,7 @@ jobs:
           cache-dependency-path: "requirements-worker.txt"
       - name: Install Stitch Deps
         run: |
-          pip install --disable-pip-version-check -q opencv-python-headless numpy imageio-ffmpeg
+          pip install --disable-pip-version-check -q pydantic opencv-python-headless numpy imageio-ffmpeg
       - uses: actions/download-artifact@v4
         with:
           name: cloud-plan-${{ needs.plan.outputs.job_id }}
