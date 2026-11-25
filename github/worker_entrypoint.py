@@ -753,51 +753,26 @@ class WorkerRunner:
         lease: Optional[Dict[str, Any]] = None,
         prev_video_code: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Ultra-fast, LUT-accelerated 1080p kinetic renderer with Video-as-Code continuity."""
-        import cv2
-        import numpy as np
+        """High-end PyCairo cel-shaded 1080p vector animation renderer with Video-as-Code continuity."""
+        from backend.animation.anime_engine import AnimeSceneRenderer
 
         seq_idx = int(lease.get("sequence_index", 0) if lease else 0)
         total_chunks = max(1, int(lease.get("total_chunks", 4) if lease else 4))
         model_name = (lease.get("model_name") or self.model_name or "wan_2_1").lower() if lease else self.model_name.lower()
-        is_extended = bool(lease.get("is_extended_clip", seq_idx > 0)) if lease else False
         is_ch_start = bool(lease.get("is_chapter_start", False)) if lease else False
         is_ch_end = bool(lease.get("is_chapter_end", False)) if lease else False
         chapter_title = lease.get("chapter_title") if lease else None
         chapter_subtitle = lease.get("chapter_subtitle") if lease else None
 
-        clean_prompt = re.sub(r"\[(CHAPTER|Scene|Part|Act|EXTENDED CLIP)[^\]]*\]", "", prompt or "").strip()
+        clean_prompt = re.sub(r"\[(CHAPTER|Scene|Part|Act|EXTENDED CLIP)[^\]]*\]", "", prompt or "", flags=re.IGNORECASE).strip()
         if not clean_prompt:
-            clean_prompt = "Cinematic documentary masterpiece, 8k resolution"
+            clean_prompt = "Cyberpunk anime samurai warrior unleashes lightning katana duel across neon Tokyo rooftops"
 
-        # Optional cloud diffusion ONLY when explicitly opted-in (never stalls independent execution)
-        enable_zerogpu = os.getenv("FREECLOUD_ENABLE_ZEROGPU", "false").lower() == "true"
-
-        anchor_frame = self._acquire_master_anchor_frame(lease, width=width, height=height)
-
-        # Read continuous phase/kinematic/lighting state from Video-as-Code manifest
-        prev_motion = (prev_video_code or {}).get("motion_and_physics", {})
-        prev_cam = (prev_video_code or {}).get("camera_kinematics", {})
-        prev_vis = (prev_video_code or {}).get("visual_color_and_lighting", {})
         prev_audio = (prev_video_code or {}).get("audio_continuity", {})
-
-        init_stride_phase = float(prev_motion.get("stride_phase_rad", 0.0))
-        init_breath_phase = float(prev_motion.get("breath_phase_rad", 0.0))
-        init_flare_t = float(prev_motion.get("flare_phase_t", seq_idx * (total_frames / fps)))
         init_audio_phase = float(prev_audio.get("end_phase_rad", 0.0))
         init_audio_rpm = float(prev_audio.get("end_rpm_hz", 85.0))
-        prev_bgr_means = prev_vis.get("bgr_channel_means")
 
-        # Gentle cross-model luminance/white-balance lock when relaying between distinct models
-        kf1 = anchor_frame.copy()
-        if is_extended and prev_bgr_means and len(prev_bgr_means) == 3:
-            curr_means = kf1[::8, ::8].mean(axis=(0, 1))
-            diff = np.array(prev_bgr_means, dtype=np.float32) - curr_means.astype(np.float32)
-            # Nudge max +-12 luminance units for seamless cross-model brightness harmony
-            shift = np.clip(diff * 0.35, -12.0, 12.0)
-            kf1 = np.clip(kf1.astype(np.float32) + shift, 0, 255).astype(np.uint8)
-
-        # Model-specific color grading via precomputed 256-entry uint8 LUT (50x faster than float32 pow)
+        # Model-specific color grading via precomputed 256-entry uint8 LUT
         if "wan" in model_name:
             gamma, gain = 0.95, 1.05
         elif "hunyuan" in model_name:
@@ -813,201 +788,32 @@ class WorkerRunner:
             audio_theme, duration_sec, temp_audio_path, init_phase_rad=init_audio_phase, init_rpm_hz=init_audio_rpm
         )
 
-        # Low-res lighting grid (240x135) upscaled per frame -> 64x faster trig evaluation
-        lw, lh = 240, 135
-        l_y, l_x = np.mgrid[0:lh, 0:lw].astype(np.float32)
-        l_scale_x = l_x * (width / float(lw))
-        l_scale_y = l_y * (height / float(lh))
-
-        # 1/4-res organic displacement grid (480x270 -> upscaled smoothly) while keeping crisp 1080p texture lookup
-        gw, gh = max(64, width // 4), max(36, height // 4)
-        ds_x = width / float(gw)
-        ds_y = height / float(gh)
-        lgy, lgx = np.mgrid[0:gh, 0:gw].astype(np.float32)
-        y_norm = lgy / float(gh)
-        x_norm = lgx / float(gw)
-        lgx_full = (lgx + 0.5) * ds_x - 0.5
-        lgy_full = (lgy + 0.5) * ds_y - 0.5
-
-        is_vehicle = bool(re.search(r"\b(car|supercar|hypercar|vehicle|race|highway|drift|driving|road)\b", clean_prompt.lower()))
-        scale_factor = width / 640.0
-        bar_top = int(round(height * 0.055))
-        bar_bottom = int(round(height * 0.060))
-
-        # Pre-seed dynamic atmospheric particles (starlight, sparks, rain, or dust motes)
-        rng = np.random.default_rng((abs(hash(chunk_id)) + seq_idx * 97) % (2**31 - 1))
-        num_particles = 55
-        p_x = rng.uniform(0, width, num_particles).astype(np.float32)
-        p_y = rng.uniform(bar_top + 10, height - bar_bottom - 10, num_particles).astype(np.float32)
-        p_vx = rng.uniform(-3.2, 4.5, num_particles).astype(np.float32) * scale_factor
-        p_vy = rng.uniform(-2.8, 1.2, num_particles).astype(np.float32) * scale_factor
-        p_rad = rng.integers(2, max(3, int(4 * scale_factor)), num_particles)
-
-        if audio_theme in ("cyberpunk",):
-            p_color = (255, 220, 80)
-        elif audio_theme in ("dragon_fantasy",):
-            p_color = (180, 255, 210)
-        else:
-            p_color = (190, 235, 255)
-
-        if is_vehicle:
-            road_mask = (np.clip((y_norm - 0.62) / 0.38, 0.0, 1.0) ** 1.5).astype(np.float32)
-            wheel_mask = (np.exp(-((x_norm - 0.25) ** 2 + (y_norm - 0.72) ** 2) / 0.015) + np.exp(-((x_norm - 0.72) ** 2 + (y_norm - 0.72) ** 2) / 0.015)).astype(np.float32)
-            chassis_mask = np.clip(1.0 - np.abs(y_norm - 0.52) / 0.35, 0.0, 1.0).astype(np.float32)
-        else:
-            paw_mask = (np.clip((y_norm - 0.58) / 0.42, 0.0, 1.0) * np.cos(np.pi * (x_norm - 0.5))).astype(np.float32)
-            body_mask = np.clip(1.0 - np.abs(y_norm - 0.50) / 0.30, 0.0, 1.0).astype(np.float32)
-            head_mask = np.clip(1.0 - np.hypot(x_norm - 0.45, y_norm - 0.38) / 0.28, 0.0, 1.0).astype(np.float32)
-
-        lmx = np.empty((gh, gw), dtype=np.float32)
-        lmy = np.empty((gh, gw), dtype=np.float32)
-        l_tmp = np.empty((gh, gw), dtype=np.float32)
-        glow_s = np.zeros((lh, lw, 3), dtype=np.uint8)
-
-        # Pre-render optional Documentary Chapter Lower-Third Slate (only computed once -> <0.15ms blend/frame)
-        slate_roi = None
-        slate_rect = None
-        if is_ch_start and chapter_title:
-            sl_w = min(int(width * 0.62), 1180)
-            sl_h = int(round(108 * scale_factor / 3.0))
-            sl_h = max(72, min(140, sl_h))
-            sl_x = int(width * 0.045)
-            sl_y = height - bar_bottom - sl_h - int(28 * scale_factor / 3.0)
-            slate_img = np.zeros((sl_h, sl_w, 3), dtype=np.uint8)
-            slate_img[:] = (18, 16, 22)
-            # Accent vertical bar (golden amber)
-            cv2.rectangle(slate_img, (0, 0), (8, sl_h), (70, 200, 255), -1)
-            font_scale_t = max(0.55, 0.28 * scale_factor)
-            font_scale_s = max(0.42, 0.20 * scale_factor)
-            cv2.putText(slate_img, chapter_title, (24, int(sl_h * 0.44)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_t, (245, 250, 255), 2, cv2.LINE_AA)
-            if chapter_subtitle:
-                cv2.putText(slate_img, chapter_subtitle, (24, int(sl_h * 0.80)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_s, (180, 225, 245), 1, cv2.LINE_AA)
-            slate_roi = slate_img
-            slate_rect = (sl_x, sl_y, sl_w, sl_h)
-
+        renderer = AnimeSceneRenderer(width=width, height=height, fps=fps)
         proc = self._open_ffmpeg_pipe(width, height, fps, temp_audio_path if has_audio else None, output_path)
-        end_stride_phase = init_stride_phase
-        end_breath_phase = init_breath_phase
-        end_flare_t = init_flare_t
-        prev_end_zoom = float(prev_cam.get("end_zoom", 1.0)) if prev_cam else 1.0
-        end_zoom = prev_end_zoom
+        render_state: Dict[str, Any] = {}
+
+        def _stream_frame(idx: int, frame: Any) -> None:
+            if proc.stdin:
+                proc.stdin.write(frame.tobytes())
+            self._render_progress = round((idx + 1) / float(max(1, total_frames)) * 100.0, 1)
 
         try:
-            for idx in range(total_frames):
-                t_chunk = idx / max(1, total_frames - 1)
-                flare_t = init_flare_t + t_chunk * duration_sec
-
-                # Bounded camera choreography (prevents cumulative zoom distortion over 40+ clips)
-                if prev_end_zoom > 1.18:
-                    rel_zoom = 1.0 + 0.015 * math.sin(math.pi * t_chunk)
-                else:
-                    rel_zoom = 1.0 + 0.055 * t_chunk
-                pan_dir = 1.0 if (seq_idx % 2 == 0) else -0.65
-                pan_shift_x = t_chunk * 16.0 * scale_factor * pan_dir
-                pan_shift_y = -t_chunk * 5.0 * scale_factor
-                roll_deg = 0.0
-
-                np.copyto(lmx, lgx_full)
-                np.copyto(lmy, lgy_full)
-
-                if is_vehicle:
-                    stride_phase = init_stride_phase + 2.0 * math.pi * (4.0 * duration_sec / 5.0) * t_chunk
-                    np.multiply(road_mask, -14.0 * scale_factor * t_chunk, out=l_tmp)
-                    lmx += l_tmp
-                    np.multiply(chassis_mask, 1.6 * scale_factor * math.sin(stride_phase * 2.5), out=l_tmp)
-                    lmy += l_tmp
-                    np.multiply(wheel_mask, 2.5 * scale_factor * math.cos(stride_phase * 5.0), out=l_tmp)
-                    lmy += l_tmp
-                    roll_deg = (1.4 if seq_idx == 2 else 0.4) * math.sin(math.pi * t_chunk)
-                else:
-                    freq_scale = duration_sec / 5.0
-                    stride_phase = init_stride_phase + 2.0 * math.pi * 1.8 * freq_scale * t_chunk
-                    breath_phase = init_breath_phase + 2.0 * math.pi * 0.8 * freq_scale * t_chunk
-                    end_breath_phase = breath_phase
-                    np.multiply(paw_mask, 7.0 * scale_factor * math.sin(stride_phase), out=l_tmp)
-                    lmx += l_tmp
-                    np.multiply(head_mask, 2.2 * scale_factor * math.sin(breath_phase), out=l_tmp)
-                    lmx += l_tmp
-                    np.multiply(body_mask, 2.2 * scale_factor * math.cos(breath_phase), out=l_tmp)
-                    lmy += l_tmp
-
-                end_stride_phase = float(stride_phase % (2.0 * math.pi))
-                end_flare_t = float(flare_t)
-                end_zoom = float(prev_end_zoom * rel_zoom) if prev_cam else float(rel_zoom)
-
-                cx_t = width * 0.5 + pan_shift_x
-                cy_t = height * 0.5 + pan_shift_y
-                inv_z = 1.0 / rel_zoom
-                lmx -= cx_t
-                lmy -= cy_t
-                if abs(roll_deg) > 0.01:
-                    rad = math.radians(roll_deg)
-                    cos_a, sin_a = math.cos(rad) * inv_z, math.sin(rad) * inv_z
-                    np.copyto(l_tmp, lmx)
-                    rx = lmx * cos_a + lmy * sin_a + width * 0.5
-                    ry = l_tmp * (-sin_a) + lmy * cos_a + height * 0.5
-                    np.copyto(lmx, rx)
-                    np.copyto(lmy, ry)
-                else:
-                    lmx *= inv_z
-                    lmx += width * 0.5
-                    lmy *= inv_z
-                    lmy += height * 0.5
-
-                final_mx = cv2.resize(lmx, (width, height), interpolation=cv2.INTER_LINEAR)
-                final_my = cv2.resize(lmy, (width, height), interpolation=cv2.INTER_LINEAR)
-                frame = cv2.remap(kf1, final_mx, final_my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
-
-                # Ultra-fast 240x135 atmospheric flare/bioluminescence pass upscaled cleanly
-                if is_vehicle:
-                    flare_s = 7.0 * np.sin(l_scale_x * (0.008 / scale_factor) + flare_t * 2.0) * (1.0 - l_y / float(lh))
-                    glow_s[:, :, 0] = 0
-                    glow_s[:, :, 1] = np.clip(flare_s * 0.8, 0, 12).astype(np.uint8)
-                    glow_s[:, :, 2] = np.clip(flare_s * 1.4, 0, 18).astype(np.uint8)
-                else:
-                    mist_s = 6.0 * np.sin(l_scale_x * (0.012 / scale_factor) + flare_t * 1.4) * np.cos(l_scale_y * (0.016 / scale_factor) + flare_t * 0.7)
-                    glow_s[:, :, 0] = np.clip(mist_s * 1.3, 0, 16).astype(np.uint8)
-                    glow_s[:, :, 1] = np.clip(mist_s * 1.1, 0, 14).astype(np.uint8)
-                    glow_s[:, :, 2] = np.clip(mist_s * 0.8, 0, 10).astype(np.uint8)
-
-                glow_full = cv2.resize(glow_s, (width, height), interpolation=cv2.INTER_LINEAR)
-                cv2.add(frame, glow_full, dst=frame)
-
-                # Drifting volumetric particles
-                curr_px = (p_x + p_vx * (idx + 1)) % width
-                curr_py = ((p_y + p_vy * (idx + 1) - bar_top) % (height - bar_top - bar_bottom)) + bar_top
-                for pi in range(num_particles):
-                    cv2.circle(frame, (int(curr_px[pi]), int(curr_py[pi])), int(p_rad[pi]), p_color, -1)
-
-                # LUT color grading in-place
-                cv2.LUT(frame, gamma_lut, dst=frame)
-
-                # Documentary Chapter Lower-Third Slate fade-in/out
-                if slate_roi is not None and slate_rect is not None and 6 <= idx <= min(total_frames - 12, 96):
-                    sx, sy, sw, sh = slate_rect
-                    if idx < 18:
-                        alpha = (idx - 6) / 12.0 * 0.78
-                    elif idx > 82:
-                        alpha = max(0.0, (96 - idx) / 14.0) * 0.78
-                    else:
-                        alpha = 0.78
-                    if alpha > 0.01:
-                        roi_dst = frame[sy : sy + sh, sx : sx + sw]
-                        cv2.addWeighted(slate_roi, alpha, roi_dst, 1.0 - alpha, 0.0, dst=roi_dst)
-
-                # Smooth multi-chapter cinema transitions (0.35s fade-in/dip)
-                if total_chunks >= 8:
-                    if is_ch_start and idx < 8:
-                        cv2.convertScaleAbs(frame, dst=frame, alpha=(idx + 1) / 8.0)
-                    elif is_ch_end and idx >= total_frames - 8:
-                        cv2.convertScaleAbs(frame, dst=frame, alpha=max(0.08, (total_frames - idx) / 8.0))
-
-                frame[:bar_top, :] = 0
-                frame[-bar_bottom:, :] = 0
-
-                if proc.stdin:
-                    proc.stdin.write(frame.tobytes())
-                self._render_progress = round((idx + 1) / float(total_frames) * 100.0, 1)
+            render_state = renderer.render_sequence(
+                prompt=clean_prompt,
+                total_frames=total_frames,
+                seq_idx=seq_idx,
+                total_chunks=total_chunks,
+                chunk_id=chunk_id,
+                duration_sec=duration_sec,
+                model_name=model_name,
+                is_chapter_start=is_ch_start,
+                is_chapter_end=is_ch_end,
+                chapter_title=chapter_title,
+                chapter_subtitle=chapter_subtitle,
+                prev_video_code=prev_video_code,
+                gamma_lut=gamma_lut,
+                on_frame=_stream_frame,
+            )
         finally:
             if proc.stdin:
                 proc.stdin.close()
@@ -1020,22 +826,16 @@ class WorkerRunner:
             if ret_code != 0:
                 raise RuntimeError(f"FFmpeg direct H.264 pipe exited with code {ret_code}")
 
-        return {
-            "kinetic_theme": "vehicle_dynamics" if is_vehicle else "cinematic_locomotion",
-            "end_zoom": round(end_zoom, 4),
-            "end_center_x": round(width * 0.5 + 18.0 * scale_factor, 2),
-            "end_center_y": round(height * 0.5 - 6.0 * scale_factor, 2),
-            "pan_vx": round((18.0 * scale_factor) / max(0.1, duration_sec), 2),
-            "pan_vy": round((-6.0 * scale_factor) / max(0.1, duration_sec), 2),
-            "stride_phase_rad": round(end_stride_phase, 4),
-            "breath_phase_rad": round(float(end_breath_phase % (2.0 * np.pi)), 4),
-            "flare_phase_t": round(end_flare_t, 3),
-            "gamma": gamma,
-            "contrast_gain": gain,
-            "audio_theme": audio_theme,
-            "audio_end_phase_rad": round(end_audio_phase, 4),
-            "audio_end_rpm_hz": round(end_audio_rpm, 2),
-        }
+        render_state.update(
+            {
+                "gamma": gamma,
+                "contrast_gain": gain,
+                "audio_theme": audio_theme,
+                "audio_end_phase_rad": round(end_audio_phase, 4),
+                "audio_end_rpm_hz": round(end_audio_rpm, 2),
+            }
+        )
+        return render_state
 
 
 def main():
