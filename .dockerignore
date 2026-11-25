@@ -1,0 +1,12 @@
+.git
+.env
+__pycache__
+*.pyc
+.pytest_cache
+data/outputs/
+data/artifacts/
+data/uploads/
+data/cache/
+data/jobs_registry.json
+docs/
+tests/

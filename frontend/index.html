@@ -2,704 +2,403 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-  <title>FreeCloud AI Studio — AI Anime Video Generation Platform</title>
-  <meta name="description" content="AI-powered anime video generation platform recreating live-action serials like Jagdhatri into coherent anime.">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>FreeCloud AI Studio — 24/7 Cloud AI Video Generation Platform</title>
+  <meta name="description" content="100% Independent 24/7 Cloud AI Video Studio powered by GitHub Actions ZeroGPU Diffusion (LTX-Video, Wan 2.2, HunyuanVideo 1.5) & DIS Optical-Flow 1080p Upscaling.">
+  <link rel="stylesheet" href="./css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Header / Navigation -->
+  <!-- Sticky Glass Header -->
   <header class="app-header">
     <div class="header-container">
       <div class="brand">
-        <div class="brand-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1">
             <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
             <path d="m13 10-3 5h4l-2 5" stroke="#38bdf8"/>
           </svg>
         </div>
         <div class="brand-text">
           <h1>FreeCloud <span class="gradient-text">AI Studio</span></h1>
-          <span class="brand-tag">Anime Video Generation Platform</span>
+          <span class="brand-tag">24/7 Cloud ZeroGPU Diffusion &bull; Full HD 1080p</span>
         </div>
       </div>
 
-      <!-- Main Navigation Tabs -->
       <nav class="main-nav" role="tablist">
         <button type="button" class="nav-tab active" data-tab="tab-studio" role="tab" aria-selected="true">
-          <span class="tab-icon">🎬</span>
-          <span>Studio</span>
+          <span>🎬</span><span>Studio</span>
         </button>
-        <button type="button" class="nav-tab" data-tab="tab-jagdhatri" role="tab" aria-selected="false">
-          <span class="tab-icon">🌟</span>
-          <span>Jagdhatri Showcase</span>
+        <button type="button" class="nav-tab" data-tab="tab-gallery" role="tab" aria-selected="false">
+          <span>🌐</span><span>24/7 Gallery</span>
+          <span class="nav-count" id="galleryCountBadge">2</span>
         </button>
-        <button type="button" class="nav-tab" data-tab="tab-analysis" role="tab" aria-selected="false">
-          <span class="tab-icon">🔍</span>
-          <span>Video Analysis</span>
-        </button>
-        <button type="button" class="nav-tab" data-tab="tab-continuity" role="tab" aria-selected="false">
-          <span class="tab-icon">👥</span>
-          <span>Continuity</span>
-        </button>
-        <button type="button" class="nav-tab" data-tab="tab-monitor" role="tab" aria-selected="false">
-          <span class="tab-icon">⚡</span>
-          <span>System & Fleet</span>
+        <button type="button" class="nav-tab" data-tab="tab-cloud" role="tab" aria-selected="false">
+          <span>☁️</span><span>Cloud &amp; Deploy</span>
         </button>
       </nav>
 
-      <div class="header-status">
-        <div class="status-pill" id="comfyStatusPill">
-          <span class="status-dot pulse-cyan"></span>
-          <span id="comfyStatusText">ComfyUI Online</span>
+      <div class="header-actions">
+        <div class="mode-pill" id="connectionModePill" title="Current execution plane">
+          <span class="status-dot pulse-cyan" id="connectionDot"></span>
+          <span id="connectionModeText">24/7 Serverless Cloud</span>
         </div>
-        <div class="status-pill" id="backendStatusPill">
-          <span class="status-dot pulse-green"></span>
-          <span id="backendStatusText">Backend Ready</span>
-        </div>
-        <div class="status-pill worker-pill" id="workerFleetPill">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
-            <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-          </svg>
-          <span id="fleetStatusText">4 Cloud Servers (16GB Cluster)</span>
-        </div>
+        <button type="button" id="openCloudModalBtn" class="btn-connect-cloud">
+          <span>🔑</span>
+          <span id="cloudBtnLabel">Connect Cloud</span>
+        </button>
       </div>
     </div>
   </header>
 
-  <!-- Main Content Areas -->
   <main class="main-content">
+    <!-- ==================== TAB 1: CINEMA PRODUCTION STUDIO ==================== -->
+    <section id="tab-studio" class="tab-panel active">
+      <div class="studio-split">
 
-    <!-- ==================== TAB 1: PRODUCTION STUDIO ==================== -->
-    <div id="tab-studio" class="tab-panel active">
-      <div class="dashboard-grid">
-
-        <!-- LEFT COLUMN: Creation & Parameters -->
-        <section class="studio-card creation-panel">
-          <div class="card-header">
-            <h2>Video Production Studio</h2>
-            <span class="badge badge-purple" style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc;">MiniMax H3 Engine (Low VRAM 8-16GB)</span>
+        <!-- LEFT COLUMN: Director Controls -->
+        <div class="glass-card director-panel">
+          <div class="card-head">
+            <div>
+              <h2>Cinema Diffusion Studio</h2>
+              <p class="card-sub">Multi-model Extend-Clip ZeroGPU orchestration &bull; Zero PC required</p>
+            </div>
+            <span class="pill pill-amber">1080p HD</span>
           </div>
 
-          <!-- Project Spotlight Preset -->
-          <div class="jagdhatri-banner" id="jagdhatriPresetBtn" role="button" tabindex="0">
-            <div class="banner-badge">Featured Target</div>
-            <div class="banner-content">
-              <h3>Jagdhatri Serial Scene Recreation</h3>
-              <p>Click to load Jagdhatri (JAS) action sequence prompt, character memory & martial arts choreography presets.</p>
-            </div>
-            <div class="banner-action">
-              <span class="btn-preset">Load Preset →</span>
-            </div>
-          </div>
-
-          <form id="generationForm" class="studio-form">
-            <!-- Video Source Upload -->
-            <div class="form-group">
-              <label class="form-label" for="videoFileInput">
-                <span>Original Video Footage</span>
-                <span class="label-hint">MP4, MOV, WEBM (Max 250MB)</span>
+          <form id="generationForm" class="director-form">
+            <!-- Visual Model Selector -->
+            <div class="field-block">
+              <label class="field-label">
+                <span>AI Video Engine Pipeline</span>
+                <span class="field-hint">Auto failover across ZeroGPU clusters</span>
               </label>
-              <div class="upload-dropzone" id="uploadDropzone">
-                <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/webm" class="visually-hidden">
-                <div class="dropzone-content">
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17 8 12 3 7 8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  <p class="dropzone-text"><strong>Tap or drag</strong> original Jagdhatri / reference scene here</p>
-                  <span class="file-name-preview" id="uploadedFileName">No file selected yet</span>
-                </div>
+              <div class="model-cards-grid" id="modelSelectorGrid">
+                <button type="button" class="model-card active" data-model="auto_relay">
+                  <div class="mc-top"><span class="mc-icon">⚡</span><span class="mc-tag">Best</span></div>
+                  <strong>Auto Multi-Relay</strong>
+                  <span>LTX + Wan 2.2 + Hunyuan</span>
+                </button>
+                <button type="button" class="model-card" data-model="wan_2_1">
+                  <div class="mc-top"><span class="mc-icon">🏎️</span><span class="mc-tag">I2V Pro</span></div>
+                  <strong>Wan 2.2 Motion</strong>
+                  <span>Alibaba Physics Engine</span>
+                </button>
+                <button type="button" class="model-card" data-model="minimax_h3">
+                  <div class="mc-top"><span class="mc-icon">🎬</span><span class="mc-tag">Fast</span></div>
+                  <strong>LTX-Video Distilled</strong>
+                  <span>Rapid T2V &amp; I2V Chain</span>
+                </button>
+                <button type="button" class="model-card" data-model="hunyuan_video">
+                  <div class="mc-top"><span class="mc-icon">🌌</span><span class="mc-tag">Filmic</span></div>
+                  <strong>HunyuanVideo 1.5</strong>
+                  <span>Tencent Cinema Grade</span>
+                </button>
               </div>
             </div>
 
-            <!-- Story Script / Universal Narrative Direction -->
-            <div class="form-group">
-              <div class="prompt-header-row">
-                <label class="form-label" for="storyPromptInput" style="margin-bottom: 0;">
-                  <span>Universal Narrative Prompt</span>
-                  <span class="label-hint">Text-to-Video & Video-to-Video</span>
+            <!-- Prompt Area + Chips -->
+            <div class="field-block">
+              <div class="label-row">
+                <label class="field-label" for="storyPromptInput">
+                  <span>Scene Direction Prompt</span>
                 </label>
-                <div class="prompt-actions-bar">
-                  <button type="button" id="btnRandomPrompt" class="btn-prompt-action" title="Insert a creative random cinematic scene">
-                    <span class="dice-icon">🎲</span>
-                    <span>Random Prompt</span>
-                  </button>
-                  <button type="button" id="btnSurpriseMe" class="btn-prompt-action surprise-gradient" title="Generate random topic and start generation immediately">
-                    <span>⚡ Random & Generate</span>
-                  </button>
+                <div class="prompt-tools">
+                  <button type="button" id="btnRandomPrompt" class="mini-btn">🎲 Random</button>
+                  <button type="button" id="btnSurpriseMe" class="mini-btn mini-btn-glow">⚡ Random &amp; Render</button>
                 </div>
               </div>
 
-              <!-- Quick Topic Category Chips -->
-              <div class="prompt-chips-row">
-                <span class="chips-label">Themes:</span>
-                <button type="button" class="prompt-chip" data-theme="cyberpunk">⚔️ Cyberpunk</button>
-                <button type="button" class="prompt-chip" data-theme="fantasy">🐉 Dragon Fantasy</button>
-                <button type="button" class="prompt-chip" data-theme="shinkai">🌸 Shinkai Sunset</button>
-                <button type="button" class="prompt-chip" data-theme="scifi">🚀 Sci-Fi Mecha</button>
-                <button type="button" class="prompt-chip" data-theme="samurai">🎋 Samurai Duel</button>
-                <button type="button" class="prompt-chip" data-theme="ghibli">🍃 Ghibli Magic</button>
-                <button type="button" class="prompt-chip" data-theme="jagdhatri">🥋 Jagdhatri Action</button>
+              <div class="theme-chips" id="themeChips">
+                <button type="button" class="chip" data-theme="hypercar">🏎️ Coastal Hypercar</button>
+                <button type="button" class="chip" data-theme="cyberpunk">⚔️ Cyberpunk Ronin</button>
+                <button type="button" class="chip" data-theme="cosmos">🌌 Galactic Nebula</button>
+                <button type="button" class="chip" data-theme="dragon">🐉 Celestial Dragon</button>
+                <button type="button" class="chip" data-theme="drift">🌆 Neon Drift</button>
+                <button type="button" class="chip" data-theme="alpine">🏔️ Alpine Flight</button>
               </div>
 
               <textarea
                 id="storyPromptInput"
                 rows="4"
-                class="form-textarea"
-                placeholder="e.g. Neon-lit cyberpunk city at night, rain pouring down towering holograms. A cybernetic katana warrior dashes across rooftops under glowing signs."
+                class="cinema-textarea"
+                placeholder="Describe lighting, camera motion, subject, and progression (e.g., Sleek silver futuristic hypercar speeding along a golden sunset Pacific coastal cliffside highway, tire smoke drifting around ocean bends toward twilight skyscrapers...)"
                 required
               ></textarea>
             </div>
 
-            <!-- Target Duration Selector (All 10 Stages) -->
-            <div class="form-group">
-              <div class="label-with-meta">
-                <label class="form-label">Target Duration & 4-Server Cloud Cluster Allocation</label>
-                <span class="allocation-badge" id="allocationBadge">4 Cloud Servers (16GB RAM Each)</span>
+            <!-- Duration Selection -->
+            <div class="field-block">
+              <div class="label-row">
+                <label class="field-label"><span>Target Duration &amp; Cloud Scaling</span></label>
+                <span class="scaling-badge" id="scalingBadge">1 Cloud VM &bull; 4 Extend-Clip Hops</span>
               </div>
-              <div class="duration-grid" id="durationSelector">
-                <button type="button" class="duration-btn" data-duration="0.0167" data-workers="4">
-                  <span class="duration-time">1 Sec</span>
-                  <span class="duration-workers">4 Servers</span>
+              <div class="duration-pills" id="durationSelector">
+                <button type="button" class="dur-pill" data-seconds="6" data-minutes="0.1" data-vms="1">
+                  <strong>6s</strong><span>Single Shot</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.0833" data-workers="4">
-                  <span class="duration-time">5 Sec</span>
-                  <span class="duration-workers">4 Servers</span>
+                <button type="button" class="dur-pill" data-seconds="12" data-minutes="0.2" data-vms="1">
+                  <strong>12s</strong><span>2-Act Relay</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.1667" data-workers="4">
-                  <span class="duration-time">10 Sec</span>
-                  <span class="duration-workers">4 Servers</span>
+                <button type="button" class="dur-pill active" data-seconds="24" data-minutes="0.4" data-vms="1">
+                  <strong>24s</strong><span>4-Act Master</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="0.5" data-workers="4">
-                  <span class="duration-time">30 Sec</span>
-                  <span class="duration-workers">4 Servers</span>
+                <button type="button" class="dur-pill" data-seconds="48" data-minutes="0.8" data-vms="2">
+                  <strong>48s</strong><span>2 Cloud VMs</span>
                 </button>
-                <button type="button" class="duration-btn active" data-duration="1.0" data-workers="4">
-                  <span class="duration-time">1 Min</span>
-                  <span class="duration-workers">4 Servers</span>
+                <button type="button" class="dur-pill" data-seconds="60" data-minutes="1.0" data-vms="3">
+                  <strong>1 Min</strong><span>3 Cloud VMs</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="2.0" data-workers="4">
-                  <span class="duration-time">2 Min</span>
-                  <span class="duration-workers">4 Servers</span>
+                <button type="button" class="dur-pill" data-seconds="120" data-minutes="2.0" data-vms="5">
+                  <strong>2 Min</strong><span>5 Cloud VMs</span>
                 </button>
-                <button type="button" class="duration-btn" data-duration="3.0" data-workers="4">
-                  <span class="duration-time">3 Min</span>
-                  <span class="duration-workers">4 Servers</span>
-                </button>
-                <button type="button" class="duration-btn" data-duration="5.0" data-workers="4">
-                  <span class="duration-time">5 Min</span>
-                  <span class="duration-workers">4 Servers</span>
-                </button>
-                <button type="button" class="duration-btn" data-duration="10.0" data-workers="4">
-                  <span class="duration-time">10 Min</span>
-                  <span class="duration-workers">4 Servers</span>
-                </button>
-                <button type="button" class="duration-btn" data-duration="15.0" data-workers="4">
-                  <span class="duration-time">15 Min</span>
-                  <span class="duration-workers">4 Servers</span>
-                </button>
-              </div>
-              <p class="allocation-disclaimer">
-                * Every video generation pools performance across 4 dedicated 16GB RAM cloud servers on GitHub for high-quality parallel assembly.
-              </p>
-            </div>
-
-            <!-- Resolution and Quality Selector -->
-            <div class="form-row-2">
-              <div class="form-group">
-                <label class="form-label" for="resolutionSelect">Output Resolution</label>
-                <div class="select-wrapper">
-                  <select id="resolutionSelect" class="form-select">
-                    <option value="640x360">360p Fast Draft</option>
-                    <option value="854x480">480p SD (Balanced)</option>
-                    <option value="1280x720">720p HD (Fast High Quality)</option>
-                    <option value="1920x1080" selected>1080p Full HD (Maximum Clarity)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="animeStyleSelect">Visual Aesthetic</label>
-                <div class="select-wrapper">
-                  <select id="animeStyleSelect" class="form-select">
-                    <option value="ufotable_digital" selected>Ufotable Digital Anime (Crisp Lineart &amp; Lighting)</option>
-                    <option value="wan_2_1_realistic">Photorealistic Cinema 8K</option>
-                    <option value="shinkai_cinematic">Makoto Shinkai (Atmospheric Skies)</option>
-                    <option value="mappa_action">MAPPA Dynamic Action</option>
-                    <option value="ghibli_classic">Studio Ghibli Hand-Drawn</option>
-                    <option value="minimax_h3_cinematic">MiniMax H3 Omni-Modal</option>
-                  </select>
-                </div>
               </div>
             </div>
 
-            <!-- Foundation Model Pipeline & Independent Speed Mode -->
-            <div class="form-row-2">
-              <div class="form-group">
-                <label class="form-label" for="modelEngineSelect">Model Pipeline (Extend Clip)</label>
-                <div class="select-wrapper">
-                  <select id="modelEngineSelect" class="form-select">
-                    <option value="auto_relay" selected>⚡ Multi-Model Relay (Wan 2.1 → MiniMax H3 → Hunyuan)</option>
-                    <option value="wan_2_1">Alibaba Wan 2.1 / 2.6 (Motion Consistency)</option>
-                    <option value="minimax_h3">MiniMax H3 Omni-Modal (+ Native Stereo Audio)</option>
-                    <option value="hunyuan_video">Tencent HunyuanVideo (Cinema Grade)</option>
-                  </select>
-                </div>
+            <!-- Resolution & Visual Aesthetic -->
+            <div class="two-col">
+              <div class="field-block">
+                <label class="field-label" for="resolutionSelect"><span>Output Quality</span></label>
+                <select id="resolutionSelect" class="cinema-select">
+                  <option value="1920x1080" selected>1080p Full HD (DIS Flow + Lanczos4)</option>
+                  <option value="1280x720">720p HD (Fast Cloud Stream)</option>
+                </select>
               </div>
 
-              <div class="form-group">
-                <label class="form-label" for="executionModeSelect">Execution Engine</label>
-                <div class="select-wrapper">
-                  <select id="executionModeSelect" class="form-select">
-                    <option value="independent_turbo" selected>⚡ Independent Turbo (Ultra-Fast, Zero External Wait)</option>
-                    <option value="hybrid">🌐 Hybrid (Instant Start + 4 GitHub Cloud Servers)</option>
-                    <option value="cloud_github">☁️ GitHub Cloud Only (4 × 16GB Cloud Servers)</option>
-                  </select>
-                </div>
+              <div class="field-block">
+                <label class="field-label" for="animeStyleSelect"><span>Visual Aesthetic</span></label>
+                <select id="animeStyleSelect" class="cinema-select">
+                  <option value="wan_2_1_realistic" selected>Photorealistic 8K Cinema</option>
+                  <option value="ufotable_digital">Ufotable Digital Anime</option>
+                  <option value="shinkai_cinematic">Makoto Shinkai Atmosphere</option>
+                  <option value="mappa_action">MAPPA High-Velocity Action</option>
+                  <option value="ghibli_classic">Studio Ghibli Painterly</option>
+                </select>
               </div>
             </div>
 
-            <!-- Continuity Engine Modules Toggle -->
-            <details class="continuity-details" open>
-              <summary class="continuity-summary">
-                <span>Continuity Engine Safeguards</span>
-                <span class="continuity-status-tag">Active</span>
-              </summary>
-              <div class="continuity-checkbox-grid">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="checkIdentity" checked>
-                  <span>Character Appearance Memory (Jagdhatri & Jash IP-Adapter)</span>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" id="checkMotion" checked>
-                  <span>Motion & Action References (Pose / DWPose Tracking)</span>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" id="checkAudioSync" checked>
-                  <span>Dialogue & Audio Synchronization (Lip-Sync Engine)</span>
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" id="checkQualityGate" checked>
-                  <span>Quality Check Gate (Enforce >= 0.75 Consistency Score)</span>
-                </label>
+            <!-- Optional Backend Video-to-Video Reference -->
+            <details class="v2v-drawer" id="v2vDrawer">
+              <summary>🎞️ Optional Video-to-Video Reference Upload (Requires Connected API Backend)</summary>
+              <div class="upload-box" id="uploadDropzone">
+                <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/webm" hidden>
+                <p><strong>Click or drag MP4/MOV/WEBM</strong> to stylize existing footage</p>
+                <span id="uploadedFileName" class="upload-status">No source footage attached</span>
               </div>
             </details>
 
-            <!-- Generation CTA Button -->
-            <button type="submit" id="generateBtn" class="btn-generate">
-              <span class="btn-icon">⚡</span>
-              <span id="generateBtnText">Generate Anime Video</span>
-            </button>
+            <!-- Primary CTA -->
+            <div class="cta-stack">
+              <button type="submit" id="generateBtn" class="btn-cinema-primary">
+                <span id="generateBtnIcon">🚀</span>
+                <span id="generateBtnText">Generate 1080p Video in 24/7 Cloud</span>
+              </button>
+              <div class="cta-footnote" id="executionHint">
+                Runs on GitHub Cloud VMs + ZeroGPU &rarr; publishes automatically to 24/7 Gallery CDN.
+              </div>
+            </div>
           </form>
-        </section>
+        </div>
 
-        <!-- RIGHT COLUMN: Live Orchestration, Workers & Preview -->
-        <section class="studio-card preview-panel">
-          <div class="card-header">
-            <h2>Production Monitor & Preview</h2>
-            <span class="job-state-tag" id="jobStateTag">System Idle</span>
+        <!-- RIGHT COLUMN: Screening Theater & Cloud Pipeline Monitor -->
+        <div class="glass-card theater-panel">
+          <div class="card-head">
+            <div>
+              <h2 id="theaterTitle">1080p Screening Theater</h2>
+              <p class="card-sub" id="theaterSubtitle">Streaming live from 24/7 GitHub Releases Cloud CDN</p>
+            </div>
+            <span class="state-badge idle" id="jobStateTag">Featured Master</span>
           </div>
 
-          <!-- Progress Overview -->
-          <div class="progress-section" id="progressSection">
-            <div class="progress-meta">
-              <span class="progress-stage" id="progressStage">Ready to initialize job</span>
-              <span class="progress-percent" id="progressPercent">0%</span>
-            </div>
-            <div class="progress-bar-track">
-              <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
-            </div>
-
-            <!-- Real-Time Timing & Cloud Fleet Telemetry -->
-            <div class="telemetry-bar">
-              <div class="telemetry-chip">
-                <span class="telemetry-icon">⏱️</span>
-                <span>ETA:</span>
-                <strong id="telemetryEta">—</strong>
-              </div>
-              <div class="telemetry-chip">
-                <span class="telemetry-icon">⏳</span>
-                <span>Elapsed:</span>
-                <strong id="telemetryElapsed">0s</strong>
-              </div>
-              <div class="telemetry-chip">
-                <span class="telemetry-icon">⚡</span>
-                <span>Fleet:</span>
-                <strong id="telemetryFleet">4 Target Workers</strong>
-              </div>
-            </div>
-          </div>
-
-          <!-- Distributed Worker Fleet Matrix -->
-          <div class="worker-matrix-card">
-            <div class="matrix-header">
-              <h3>Worker Fleet &amp; Video-as-Code Relay</h3>
-              <span class="fleet-count" id="fleetCountLabel">0 Active Workers</span>
-            </div>
-            <div class="worker-grid" id="workerGrid">
-              <div class="worker-card empty-state">
-                <p>Workers will be provisioned when job is submitted.</p>
-              </div>
-            </div>
-            <div id="videoCodeInspector" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">🧬 Latest Video-as-Code Handoff State (Model 1 → Model 2)</span>
-                <span id="videoCodeSummaryTag" style="font-size: 11px; color: #34d399; font-family: 'JetBrains Mono', monospace;">Active</span>
-              </div>
-              <pre id="videoCodeScriptBox" style="margin: 0; font-size: 11px; line-height: 1.4; color: #cbd5e1; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; max-height: 150px; overflow-y: auto;"></pre>
-            </div>
-            <div class="worker-actions">
-              <button type="button" id="simulateWorkerBtn" class="btn-secondary" style="display: none;">
-                Boost with Independent Worker
-              </button>
-            </div>
-          </div>
-
-          <!-- Continuity Quality Diagnostics -->
-          <div class="continuity-metrics-card">
-            <h3>Continuity Assurance Metrics</h3>
-            <div class="metrics-grid">
-              <div class="metric-item">
-                <span class="metric-label">Identity Preserved</span>
-                <span class="metric-value" id="metricIdentity">—</span>
-              </div>
-              <div class="metric-item">
-                <span class="metric-label">Motion Fidelity</span>
-                <span class="metric-value" id="metricMotion">—</span>
-              </div>
-              <div class="metric-item">
-                <span class="metric-label">Lip-Sync Audio</span>
-                <span class="metric-value" id="metricAudio">—</span>
-              </div>
-              <div class="metric-item">
-                <span class="metric-label">Temporal Flicker</span>
-                <span class="metric-value" id="metricFlicker">—</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Video Player Preview -->
-          <div class="video-preview-wrapper">
-            <div class="player-container">
-              <video id="finalVideoPlayer" class="video-player" controls preload="metadata" poster="">
-                <source id="videoSource" src="" type="video/mp4">
-                Your browser does not support HTML5 video.
-              </video>
-              <div class="video-placeholder" id="videoPlaceholder">
-                <div class="placeholder-graphic">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                </div>
-                <p>Generated coherent anime video will stream here upon completion</p>
-              </div>
-            </div>
-
-            <!-- Video Actions -->
-            <div class="video-action-bar">
-              <a id="downloadVideoBtn" class="btn-download disabled" href="#" download="freecloud_anime_scene.mp4">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                <span>Download Final Video</span>
-              </a>
-              <button type="button" id="cancelJobBtn" class="btn-cancel" style="display: none;">
-                Cancel Job
-              </button>
-            </div>
-          </div>
-
-        </section>
-      </div>
-    </div>
-
-    <!-- ==================== TAB 2: JAGDHATRI SHOWCASE ==================== -->
-    <div id="tab-jagdhatri" class="tab-panel">
-      <div class="showcase-header-card">
-        <div class="showcase-badge">Flagship Target Project</div>
-        <h2>Jagdhatri TV Serial Anime Recreation</h2>
-        <p class="showcase-desc">
-          Transforming live-action television footage from the acclaimed Indian TV serial <strong>Jagdhatri</strong> (Zee Bangla / Zee TV) into an anime-style visual experience while strictly preserving character identity, facial expressions, martial arts choreography, dialogue sync, and scene continuity.
-        </p>
-      </div>
-
-      <div class="showcase-dual-grid">
-        <!-- Original Footage Preview -->
-        <div class="studio-card">
-          <div class="card-header">
-            <h3>Original Television Footage</h3>
-            <span class="badge badge-teal">Ep 224 Reel (1080×1920)</span>
-          </div>
-          <div class="video-preview-wrapper reel-aspect">
-            <video id="jagdhatriSourceVideo" class="video-player active" controls preload="metadata">
-              <source src="/data/uploads/jagdhatri_ep224_reel.mp4" type="video/mp4">
-              Your browser does not support HTML5 video.
+          <!-- Hero Video Player -->
+          <div class="theater-frame">
+            <video id="finalVideoPlayer" class="theater-video" controls playsinline preload="metadata" autoplay muted loop>
+              <source id="videoSource" src="" type="video/mp4">
             </video>
+            <div class="theater-overlay-pill" id="theaterOverlayPill">1920&times;1080 &bull; 24fps &bull; LTX-Video + Wan 2.2</div>
           </div>
-          <div class="meta-tags-list">
-            <span class="tag">Aspect: 9:16 Portrait</span>
-            <span class="tag">FPS: 25.0</span>
-            <span class="tag">Duration: 40.92s</span>
-            <span class="tag">Audio: Stereo AAC</span>
+
+          <!-- Action Bar -->
+          <div class="theater-actions">
+            <div class="spec-chips" id="activeSpecChips">
+              <span class="spec-chip">H.264 High + AAC Stereo</span>
+              <span class="spec-chip">ZeroGPU Diffusion</span>
+              <span class="spec-chip" id="specJobChip">Job: fc_a45a0cc1cc</span>
+            </div>
+            <div class="btn-row">
+              <a id="downloadVideoBtn" class="btn-ghost" href="#" download="freecloud_1080p.mp4" target="_blank" rel="noopener">
+                ⬇️ Download MP4
+              </a>
+              <button type="button" id="remixCurrentBtn" class="btn-ghost">
+                ♻️ Remix Prompt
+              </button>
+              <a id="openRunLinkBtn" class="btn-ghost" href="#" target="_blank" rel="noopener" style="display: none;">
+                ↗️ View Cloud Logs
+              </a>
+            </div>
+          </div>
+
+          <!-- Live Render Pipeline Telemetry -->
+          <div class="pipeline-box" id="pipelineMonitorBox">
+            <div class="pipeline-top">
+              <span id="progressStage">Cloud pipeline idle &mdash; ready to dispatch on GitHub VMs</span>
+              <span id="progressPercent" class="mono-pct">Ready</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="progressBarFill" style="width: 0%;"></div>
+            </div>
+            <div class="telemetry-row">
+              <div class="tele-stat"><span>Mode</span><strong id="teleMode">Serverless GHA</strong></div>
+              <div class="tele-stat"><span>Elapsed</span><strong id="telemetryElapsed">0s</strong></div>
+              <div class="tele-stat"><span>Cluster</span><strong id="telemetryFleet">Ready</strong></div>
+              <div class="tele-stat"><span>Upscale</span><strong>DIS Flow 1080p</strong></div>
+            </div>
+            <div class="worker-nodes-strip" id="workerGrid"></div>
+          </div>
+
+          <!-- Token Prompt Helper Banner (Shown only in Serverless mode without PAT) -->
+          <div class="serverless-hint-card" id="serverlessHintBanner" style="display: none;">
+            <div class="sh-left">
+              <strong>Want 1-click Cloud Generation from anywhere (phone or PC off)?</strong>
+              <span>Add your fine-grained GitHub Token once (stored only in your browser), or dispatch straight via GitHub Actions.</span>
+            </div>
+            <div class="sh-actions">
+              <button type="button" id="quickConnectTokenBtn" class="mini-btn mini-btn-glow">🔑 Save Token</button>
+              <a id="directGhaLink" class="mini-btn" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/actions/workflows/autonomous_studio.yml" target="_blank" rel="noopener">↗️ GitHub Actions</a>
+            </div>
           </div>
         </div>
 
-        <!-- Scene Controls and Anime Generation -->
-        <div class="studio-card">
-          <div class="card-header">
-            <h3>Recreation & Analysis Engine</h3>
-            <span class="badge badge-indigo">Automated Flow</span>
-          </div>
+      </div>
+    </section>
 
-          <div class="action-buttons-box">
-            <button type="button" id="btnAnalyzeJagdhatri" class="btn-action primary-gradient">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <span>Analyze Jagdhatri Scene Shots & Motion</span>
-            </button>
-            <button type="button" id="btnGenerateJagdhatri" class="btn-action secondary-gradient">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-              <span>Generate Anime Sequence from Footage</span>
-            </button>
+    <!-- ==================== TAB 2: 24/7 CLOUD GALLERY ==================== -->
+    <section id="tab-gallery" class="tab-panel">
+      <div class="glass-card">
+        <div class="card-head">
+          <div>
+            <h2>24/7 Public Cloud Video Library</h2>
+            <p class="card-sub">Every rendered 1080p MP4 published cleanly to GitHub Releases &mdash; streams worldwide even with your PC turned off</p>
           </div>
+          <button type="button" id="refreshGalleryBtn" class="mini-btn">🔄 Refresh Catalog</button>
+        </div>
 
-          <!-- Character Continuity Dossier -->
-          <div class="character-dossier">
-            <h4>Character Continuity Identity Cards</h4>
-            <div class="character-cards-grid">
-              <div class="char-card">
-                <div class="char-avatar jas-avatar">JAS</div>
-                <div class="char-info">
-                  <h5>Jagdhatri Sanyal (Codename: JAS)</h5>
-                  <p class="char-role">Crime Branch Undercover Special Officer</p>
-                  <ul class="char-traits">
-                    <li>Visual: High ponytail, dark formal trenchcoat & blazer</li>
-                    <li>Martial Arts: Krav Maga defensive spin-kicks, disarm drills</li>
-                    <li>Expression: Calm, unwavering focus, tactical intensity</li>
-                    <li>Voice: Assertive Bengali/Hindi dialogue, low pitch</li>
-                  </ul>
-                </div>
+        <div class="gallery-grid" id="cloudGalleryGrid">
+          <div class="gallery-loading">Loading 24/7 Cloud Release catalog...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: CLOUD ARCHITECTURE & DEPLOY ==================== -->
+    <section id="tab-cloud" class="tab-panel">
+      <div class="cloud-grid">
+        <div class="glass-card">
+          <div class="card-head">
+            <div>
+              <h2>100% Zero-PC Serverless Architecture</h2>
+              <p class="card-sub">Nothing depends on your workstation or tunnels</p>
+            </div>
+            <span class="pill pill-emerald">Always Online</span>
+          </div>
+          <div class="arch-steps">
+            <div class="arch-step">
+              <div class="step-num">1</div>
+              <div>
+                <strong>GitHub Pages 24/7 Web UI</strong>
+                <p>This interface is deployed statically via <code>.github/workflows/deploy_pages.yml</code> so it loads on any phone or desktop 24/7 without your PC.</p>
               </div>
-
-              <div class="char-card">
-                <div class="char-avatar jash-avatar">JASH</div>
-                <div class="char-info">
-                  <h5>Jash Mukherjee</h5>
-                  <p class="char-role">Investigative Partner & Support Lead</p>
-                  <ul class="char-traits">
-                    <li>Visual: Charcoal blazer, tactical communication earpiece</li>
-                    <li>Role: Perimeter defense, surveillance and tactical backup</li>
-                    <li>Expression: Composed, analytical, observant</li>
-                    <li>Voice: Measured cadence, synchronised radio calls</li>
-                  </ul>
-                </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">2</div>
+              <div>
+                <strong>Autonomous GitHub Actions Cloud Director</strong>
+                <p><code>.github/workflows/autonomous_studio.yml</code> dynamically shards videos across parallel Ubuntu cloud VMs, rotating fresh Azure IPs for ZeroGPU quotas.</p>
+              </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">3</div>
+              <div>
+                <strong>Multi-Engine ZeroGPU Diffusion + Extend-Clip I2V</strong>
+                <p>Chained rendering across <strong>LTX-Video Distilled</strong>, <strong>Wan 2.2 I2V</strong>, and <strong>HunyuanVideo 1.5</strong> with <strong>DIS Optical Flow</strong> 1080p upscaling &amp; AAC stereo synthesis.</p>
+              </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">4</div>
+              <div>
+                <strong>GitHub Releases 24/7 Video CDN</strong>
+                <p>Finished 1080p MP4 masters automatically publish to the <code>cloud-gallery</code> release with HTTP byte-range seeking and instant browser playback.</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <!-- Shot Breakdown Timeline -->
-      <section class="studio-card showcase-shots-card">
-        <div class="card-header">
-          <h3>Detected Shot Cuts & Kinematics Timeline</h3>
-          <span class="badge" id="shotCountBadge">Click 'Analyze' to inspect shots</span>
-        </div>
-        <div id="jagdhatriShotsContainer" class="shots-timeline-grid">
-          <p class="timeline-empty">Click <strong>"Analyze Jagdhatri Scene Shots & Motion"</strong> above to extract shot cuts, optical flow camera movement, and keyframe representations.</p>
-        </div>
-      </section>
-    </div>
-
-    <!-- ==================== TAB 3: VIDEO ANALYSIS STUDIO ==================== -->
-    <div id="tab-analysis" class="tab-panel">
-      <div class="studio-card">
-        <div class="card-header">
-          <h2>Video Analysis & Shot Boundary Detection</h2>
-          <span class="badge">OpenCV & Dense Optical Flow</span>
-        </div>
-        <p class="panel-subtitle">
-          Extract technical metadata, frame rates, color histogram scene transitions, and Farneback dense optical flow camera kinematics (pan, tilt, zoom, dynamic action) to guide AI frame conditioning.
-        </p>
-
-        <div class="analysis-upload-bar">
-          <input type="text" id="analysisVideoPathInput" class="form-input" placeholder="Enter video filename or server path (e.g. jagdhatri_ep224_reel.mp4)" value="jagdhatri_ep224_reel.mp4">
-          <button type="button" id="btnRunCustomAnalysis" class="btn-action primary-gradient">
-            Analyze Video File
-          </button>
-        </div>
-
-        <div id="analysisResultsBox" class="analysis-results-box" style="display: none;">
-          <div class="analysis-stats-grid">
-            <div class="stat-card">
-              <span class="stat-num" id="statResolution">1080×1920</span>
-              <span class="stat-name">Resolution (Aspect)</span>
+        <div class="glass-card">
+          <div class="card-head">
+            <div>
+              <h2>Optional 24/7 Cloud Backend Container</h2>
+              <p class="card-sub">Deploy FastAPI orchestrator to Render or HuggingFace Docker Spaces</p>
             </div>
-            <div class="stat-card">
-              <span class="stat-num" id="statFps">25.0</span>
-              <span class="stat-name">Frame Rate (FPS)</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-num" id="statDuration">40.92s</span>
-              <span class="stat-name">Total Duration</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-num" id="statCuts">13</span>
-              <span class="stat-name">Detected Cuts</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-num" id="statCameraStyle">Dynamic Action</span>
-              <span class="stat-name">Dominant Motion</span>
-            </div>
+            <span class="pill pill-cyan">Docker Ready</span>
           </div>
-
-          <div class="shots-breakdown-section">
-            <h3>Individual Scene Shots Breakdown</h3>
-            <div id="analysisShotsList" class="shots-list-grid"></div>
+          <p class="deploy-desc">
+            Want visitors to trigger jobs cleanly without entering a personal GitHub token in their browser? Deploy the included <code>Dockerfile</code> &amp; <code>render.yaml</code> on Render Free Tier or a HuggingFace Docker Space, set <code>GITHUB_PAT_TOKEN</code> securely in server secrets, and paste that URL inside <strong>Connect Cloud</strong>.
+          </p>
+          <div class="deploy-meta">
+            <div class="diag-row"><span>Repository</span><code>pratham31sinha-boop/FreeCloud-AI-Studio</code></div>
+            <div class="diag-row"><span>Workflow</span><code>autonomous_studio.yml</code></div>
+            <div class="diag-row"><span>Release CDN Tag</span><code>cloud-gallery</code></div>
+            <div class="diag-row"><span>Active Endpoint</span><code id="diagBackendEndpoint">GitHub Serverless REST API</code></div>
+          </div>
+          <div class="btn-row" style="margin-top: 16px;">
+            <a class="btn-ghost" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/actions/workflows/autonomous_studio.yml" target="_blank" rel="noopener">
+              🚀 Open Autonomous Workflow
+            </a>
+            <a class="btn-ghost" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/releases/tag/cloud-gallery" target="_blank" rel="noopener">
+              📦 Browse Release Assets
+            </a>
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- ==================== TAB 4: CONTINUITY & CHARACTERS ==================== -->
-    <div id="tab-continuity" class="tab-panel">
-      <div class="studio-card">
-        <div class="card-header">
-          <h2>Character Continuity Engine</h2>
-          <span class="badge badge-emerald">Active Enforcement</span>
-        </div>
-        <p class="panel-subtitle">
-          Maintains multi-shot character identity, face embeddings, costume consistency, motion kinematics, and lip-sync audio alignment across parallel worker chunks.
-        </p>
-
-        <div class="continuity-overview-grid">
-          <div class="continuity-feature-card">
-            <div class="feat-icon">🎯</div>
-            <h4>Identity Drift Protection</h4>
-            <p>Compares generation latent representations against master character embeddings. Re-prompts or rejects frames with drift &gt; 25%.</p>
-          </div>
-          <div class="continuity-feature-card">
-            <div class="feat-icon">🏃</div>
-            <h4>Motion Kinematics Anchor</h4>
-            <p>Preserves original camera pan/tilt vectors and actor choreography using OpenPose / DWPose control signals.</p>
-          </div>
-          <div class="continuity-feature-card">
-            <div class="feat-icon">🎙️</div>
-            <h4>Dialogue Audio Alignment</h4>
-            <p>Splits dialogue tracks and enforces phoneme-to-viseme lip synchronization so anime characters speak naturally.</p>
-          </div>
-          <div class="continuity-feature-card">
-            <div class="feat-icon">🛡️</div>
-            <h4>Quality Check Gate</h4>
-            <p>Automatically benchmarks each chunk against the 0.75 composite quality threshold before final assembly.</p>
-          </div>
-        </div>
-
-        <div class="character-dossier" style="margin-top: 24px;">
-          <h3>Registered Character Profiles</h3>
-          <div id="continuityCharactersList" class="character-cards-grid">
-            <!-- Dynamically populated from /api/v1/continuity/characters -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== TAB 5: SYSTEM & FLEET MONITOR ==================== -->
-    <div id="tab-monitor" class="tab-panel">
-      <div class="studio-card">
-        <div class="card-header">
-          <h2>System Health & Distributed Worker Architecture</h2>
-          <span class="badge badge-cyan">Architecture Blueprint</span>
-        </div>
-
-        <div class="system-monitor-grid">
-          <!-- ComfyUI Node Details -->
-          <div class="monitor-card">
-            <div class="monitor-header">
-              <h3>ComfyUI Server</h3>
-              <span class="badge badge-emerald" id="comfyNodeStatus">Running (PID: Active)</span>
-            </div>
-            <div class="monitor-stats">
-              <div class="m-row"><span>Endpoint:</span> <code>http://127.0.0.1:8188</code></div>
-              <div class="m-row"><span>Inference Mode:</span> <span class="tag">Native CPU (torch 2.15.0+cpu)</span></div>
-              <div class="m-row"><span>Registered Nodes:</span> <strong id="comfyNodeCount">703 Nodes</strong></div>
-              <div class="m-row"><span>Key Video Nodes:</span> <code>CreateVideo, SaveVideo, KSampler, VAEDecode</code></div>
-            </div>
-          </div>
-
-          <!-- Hardware Environment Details -->
-          <div class="monitor-card">
-            <div class="monitor-header">
-              <h3>Hardware Environment</h3>
-              <span class="badge badge-amber">Development Profile</span>
-            </div>
-            <div class="monitor-stats">
-              <div class="m-row"><span>Host CPU:</span> <span>Intel Core 2nd Gen (4 Threads)</span></div>
-              <div class="m-row"><span>Dedicated GPU:</span> <span>None (CPU Offload Active)</span></div>
-              <div class="m-row"><span>System RAM:</span> <span>5.7 GiB Total (~1.8 GiB Free)</span></div>
-              <div class="m-row"><span>FastAPI Backend:</span> <code>http://0.0.0.0:8000</code></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Worker Allocation Matrix Table -->
-        <div class="worker-table-card">
-          <h3>GitHub Actions Worker Allocation Policy</h3>
-          <p class="table-subtitle">Target worker allocations for temporary GitHub Actions runner orchestration:</p>
-
-          <table class="allocation-table">
-            <thead>
-              <tr>
-                <th>Video Duration</th>
-                <th>Target Workers</th>
-                <th>Chunk Length</th>
-                <th>Parallel Architecture</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td>1 Second (Stage 1)</td><td>1 Worker</td><td>1.0 sec</td><td>Single worker preview</td></tr>
-              <tr><td>5 Seconds (Stage 2)</td><td>1 Worker</td><td>5.0 sec</td><td>Single worker short clip</td></tr>
-              <tr><td>10 Seconds (Stage 3)</td><td>2 Workers</td><td>5.0 sec</td><td>Task-parallel split</td></tr>
-              <tr><td>30 Seconds (Stage 4)</td><td>3 Workers</td><td>10.0 sec</td><td>Task-parallel split</td></tr>
-              <tr class="highlight-row"><td><strong>1 Minute (Stage 5)</strong></td><td><strong>4 Workers</strong></td><td>15.0 sec</td><td><strong>Task-parallel split</strong></td></tr>
-              <tr><td>2 Minutes (Stage 6)</td><td>5 Workers</td><td>24.0 sec</td><td>Task-parallel split</td></tr>
-              <tr><td>3 Minutes (Stage 7)</td><td>6 Workers</td><td>30.0 sec</td><td>Task-parallel split</td></tr>
-              <tr><td>5 Minutes (Stage 8)</td><td>7 Workers</td><td>42.8 sec</td><td>Task-parallel split</td></tr>
-              <tr><td>10 Minutes (Stage 9)</td><td>8 Workers</td><td>75.0 sec</td><td>Task-parallel split</td></tr>
-              <tr><td>15 Minutes (Stage 10)</td><td>10 Workers</td><td>90.0 sec</td><td>Task-parallel split</td></tr>
-            </tbody>
-          </table>
-
-          <div class="architecture-notes">
-            <h4>Parallel Processing Architecture Clarification</h4>
-            <ul>
-              <li><strong>Task-Parallel Processing (Active Pattern):</strong> Each GitHub Actions runner operates in its own isolated container environment, processing independent non-overlapping time slices (scene chunks). The chunks are concatenated with cross-fade continuity and audio synchronization.</li>
-              <li><strong>RAM Isolation:</strong> Launching 4 workers provides 4 distinct 7GB virtual runners, NOT a single 28GB shared-memory machine. Large neural models must independently fit within runner memory.</li>
-              <li><strong>Worker Failover:</strong> Unacknowledged task leases automatically expire after 300s and are reassigned to healthy runners.</li>
-            </ul>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
+    </section>
   </main>
 
-  <footer class="app-footer">
-    <p>FreeCloud AI Studio • Modular Anime Video Generation Engine • Foundation Release v0.1.0 • Jagdhatri Anime Project</p>
-  </footer>
+  <!-- Cloud Connection Settings Modal -->
+  <div class="modal-backdrop" id="cloudModal" hidden>
+    <div class="modal-dialog glass-card" role="dialog" aria-labelledby="modalTitle">
+      <div class="card-head">
+        <div>
+          <h3 id="modalTitle">☁️ 24/7 Cloud Connection Settings</h3>
+          <p class="card-sub">Stored strictly in your browser's localStorage &mdash; zero data leaves your device</p>
+        </div>
+        <button type="button" id="closeCloudModalBtn" class="mini-btn">&times;</button>
+      </div>
 
-  <script src="/static/js/app.js"></script>
+      <div class="modal-body">
+        <div class="field-block">
+          <label class="field-label" for="inputCloudApiUrl">
+            <span>Optional Cloud Backend URL (Render / HuggingFace Space / Custom FastAPI)</span>
+          </label>
+          <input type="url" id="inputCloudApiUrl" class="cinema-input" placeholder="https://your-freecloud-backend.onrender.com (leave empty for Pure GitHub Serverless)">
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" for="inputGhToken">
+            <span>GitHub Fine-Grained Token (for 1-Click Serverless Trigger from GitHub Pages)</span>
+          </label>
+          <input type="password" id="inputGhToken" class="cinema-input" placeholder="github_pat_... (needs Actions Read/Write on FreeCloud-AI-Studio)">
+          <span class="field-hint">With this saved in browser storage, clicking Generate triggers GitHub Actions Cloud VMs directly with zero PC connected.</span>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button type="button" id="clearCloudSettingsBtn" class="btn-ghost">Reset</button>
+        <button type="button" id="saveCloudSettingsBtn" class="btn-cinema-primary" style="width: auto; padding: 10px 22px;">Save &amp; Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/app.js"></script>
 </body>
 </html>

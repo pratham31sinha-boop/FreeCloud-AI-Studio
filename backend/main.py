@@ -107,6 +107,12 @@ if brain_dir.is_dir():
 frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 if frontend_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+    if (frontend_dir / "css").is_dir():
+        app.mount("/css", StaticFiles(directory=str(frontend_dir / "css")), name="css")
+    if (frontend_dir / "js").is_dir():
+        app.mount("/js", StaticFiles(directory=str(frontend_dir / "js")), name="js")
+    if (frontend_dir / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
 
     @app.get("/", include_in_schema=False)
     async def serve_index():

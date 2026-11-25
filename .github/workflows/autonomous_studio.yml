@@ -1,0 +1,135 @@
+name: FreeCloud Autonomous 24/7 Cloud Studio
+
+on:
+  workflow_dispatch:
+    inputs:
+      story_prompt:
+        description: "Scene narrative prompt for AI Video Diffusion"
+        required: true
+        type: string
+        default: "Sleek silver futuristic hypercar speeding along a golden sunset Pacific coastal cliffside highway, billowing tire smoke, glowing skyscrapers on horizon, 8k"
+      duration_seconds:
+        description: "Target duration in seconds (6, 12, 24, 48, 60, 120)"
+        required: false
+        type: string
+        default: "24"
+      model_name:
+        description: "AI Video Engine (auto_relay | wan_2_1 | minimax_h3 | hunyuan_video)"
+        required: false
+        type: string
+        default: "auto_relay"
+      anime_style:
+        description: "Visual aesthetic preset"
+        required: false
+        type: string
+        default: "wan_2_1_realistic"
+      resolution:
+        description: "Output resolution (1920x1080 | 1280x720)"
+        required: false
+        type: string
+        default: "1920x1080"
+      job_id:
+        description: "Optional custom job ID"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    name: Plan Distributed Cloud Chapters
+    runs-on: ubuntu-latest
+    outputs:
+      job_id: ${{ steps.make_plan.outputs.job_id }}
+      matrix: ${{ steps.make_plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate Chapter Plan
+        id: make_plan
+        run: |
+          python github/autonomous_cloud_pipeline.py plan \
+            --job-id "${{ inputs.job_id }}" \
+            --prompt "${{ inputs.story_prompt }}" \
+            --duration-seconds "${{ inputs.duration_seconds }}" \
+            --model "${{ inputs.model_name }}" \
+            --anime-style "${{ inputs.anime_style }}" \
+            --resolution "${{ inputs.resolution }}" \
+            --plan-out cloud_plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloud-plan-${{ steps.make_plan.outputs.job_id }}
+          path: cloud_plan.json
+
+  render_chapter:
+    name: Render Cloud Chapter (${{ matrix.chapter_index }})
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chapter_index: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements-worker.txt"
+      - name: Install Cloud Diffusion & Cairo Dependencies
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libcairo2-dev pkg-config
+          pip install --disable-pip-version-check -q -r requirements-worker.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: cloud-plan-${{ needs.plan.outputs.job_id }}
+          path: /tmp/plan
+      - name: Render Real ZeroGPU Diffusion Chapter
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python github/autonomous_cloud_pipeline.py render-chapter \
+            --plan-json /tmp/plan/cloud_plan.json \
+            --chapter-index "${{ matrix.chapter_index }}" \
+            --out-dir /tmp/chapter_out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-chapter-${{ needs.plan.outputs.job_id }}-${{ matrix.chapter_index }}
+          path: /tmp/chapter_out/chapter_*
+
+  publish:
+    name: Assemble 1080p Master & Publish 24/7 Release
+    needs: [plan, render_chapter]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "requirements-worker.txt"
+      - name: Install Stitch Deps
+        run: |
+          pip install --disable-pip-version-check -q opencv-python-headless numpy imageio-ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: cloud-plan-${{ needs.plan.outputs.job_id }}
+          path: /tmp/plan
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rendered-chapter-${{ needs.plan.outputs.job_id }}-*
+          path: /tmp/chapters
+      - name: Publish Master MP4 & Update Gallery Manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python github/autonomous_cloud_pipeline.py publish-release \
+            --plan-json /tmp/plan/cloud_plan.json \
+            --chapters-dir /tmp/chapters \
+            --repo "${{ github.repository }}" \
+            --tag cloud-gallery \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

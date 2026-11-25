@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: freecloud-ai-studio
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: GITHUB_ACTIONS_ENABLED
+        value: "true"
+      - key: GITHUB_REPOSITORY
+        value: "pratham31sinha-boop/FreeCloud-AI-Studio"
+      - key: GITHUB_WORKFLOW_ID
+        value: "worker_runner.yml"
+      - key: GITHUB_PAT_TOKEN
+        sync: false
+      - key: FREECLOUD_PUBLIC_URL
+        sync: false
+      - key: HF_TOKEN
+        sync: false
