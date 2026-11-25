@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>FreeCloud AI Studio — 24/7 Cloud AI Video Generation Platform</title>
+  <meta name="description" content="100% Independent 24/7 Cloud AI Video Studio powered by GitHub Actions ZeroGPU Diffusion (LTX-Video, Wan 2.2, HunyuanVideo 1.5) & DIS Optical-Flow 1080p Upscaling.">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Sticky Glass Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+            <path d="m13 10-3 5h4l-2 5" stroke="#38bdf8"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>FreeCloud <span class="gradient-text">AI Studio</span></h1>
+          <span class="brand-tag">24/7 Cloud ZeroGPU Diffusion &bull; Full HD 1080p</span>
+        </div>
+      </div>
+
+      <nav class="main-nav" role="tablist">
+        <button type="button" class="nav-tab active" data-tab="tab-studio" role="tab" aria-selected="true">
+          <span>🎬</span><span>Studio</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="tab-gallery" role="tab" aria-selected="false">
+          <span>🌐</span><span>24/7 Gallery</span>
+          <span class="nav-count" id="galleryCountBadge">2</span>
+        </button>
+        <button type="button" class="nav-tab" data-tab="tab-cloud" role="tab" aria-selected="false">
+          <span>☁️</span><span>Cloud &amp; Deploy</span>
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <div class="mode-pill" id="connectionModePill" title="Current execution plane">
+          <span class="status-dot pulse-cyan" id="connectionDot"></span>
+          <span id="connectionModeText">24/7 Serverless Cloud</span>
+        </div>
+        <button type="button" id="openCloudModalBtn" class="btn-connect-cloud">
+          <span>🔑</span>
+          <span id="cloudBtnLabel">Connect Cloud</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <!-- ==================== TAB 1: CINEMA PRODUCTION STUDIO ==================== -->
+    <section id="tab-studio" class="tab-panel active">
+      <div class="studio-split">
+
+        <!-- LEFT COLUMN: Director Controls -->
+        <div class="glass-card director-panel">
+          <div class="card-head">
+            <div>
+              <h2>Cinema Diffusion Studio</h2>
+              <p class="card-sub">Multi-model Extend-Clip ZeroGPU orchestration &bull; Zero PC required</p>
+            </div>
+            <span class="pill pill-amber">1080p HD</span>
+          </div>
+
+          <form id="generationForm" class="director-form">
+            <!-- Visual Model Selector -->
+            <div class="field-block">
+              <label class="field-label">
+                <span>AI Video Engine Pipeline</span>
+                <span class="field-hint">Auto failover across ZeroGPU clusters</span>
+              </label>
+              <div class="model-cards-grid" id="modelSelectorGrid">
+                <button type="button" class="model-card active" data-model="auto_relay">
+                  <div class="mc-top"><span class="mc-icon">⚡</span><span class="mc-tag">Best</span></div>
+                  <strong>Auto Multi-Relay</strong>
+                  <span>LTX + Wan 2.2 + Hunyuan</span>
+                </button>
+                <button type="button" class="model-card" data-model="wan_2_1">
+                  <div class="mc-top"><span class="mc-icon">🏎️</span><span class="mc-tag">I2V Pro</span></div>
+                  <strong>Wan 2.2 Motion</strong>
+                  <span>Alibaba Physics Engine</span>
+                </button>
+                <button type="button" class="model-card" data-model="minimax_h3">
+                  <div class="mc-top"><span class="mc-icon">🎬</span><span class="mc-tag">Fast</span></div>
+                  <strong>LTX-Video Distilled</strong>
+                  <span>Rapid T2V &amp; I2V Chain</span>
+                </button>
+                <button type="button" class="model-card" data-model="hunyuan_video">
+                  <div class="mc-top"><span class="mc-icon">🌌</span><span class="mc-tag">Filmic</span></div>
+                  <strong>HunyuanVideo 1.5</strong>
+                  <span>Tencent Cinema Grade</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Prompt Area + Chips -->
+            <div class="field-block">
+              <div class="label-row">
+                <label class="field-label" for="storyPromptInput">
+                  <span>Scene Direction Prompt</span>
+                </label>
+                <div class="prompt-tools">
+                  <button type="button" id="btnRandomPrompt" class="mini-btn">🎲 Random</button>
+                  <button type="button" id="btnSurpriseMe" class="mini-btn mini-btn-glow">⚡ Random &amp; Render</button>
+                </div>
+              </div>
+
+              <div class="theme-chips" id="themeChips">
+                <button type="button" class="chip" data-theme="hypercar">🏎️ Coastal Hypercar</button>
+                <button type="button" class="chip" data-theme="cyberpunk">⚔️ Cyberpunk Ronin</button>
+                <button type="button" class="chip" data-theme="cosmos">🌌 Galactic Nebula</button>
+                <button type="button" class="chip" data-theme="dragon">🐉 Celestial Dragon</button>
+                <button type="button" class="chip" data-theme="drift">🌆 Neon Drift</button>
+                <button type="button" class="chip" data-theme="alpine">🏔️ Alpine Flight</button>
+              </div>
+
+              <textarea
+                id="storyPromptInput"
+                rows="4"
+                class="cinema-textarea"
+                placeholder="Describe lighting, camera motion, subject, and progression (e.g., Sleek silver futuristic hypercar speeding along a golden sunset Pacific coastal cliffside highway, tire smoke drifting around ocean bends toward twilight skyscrapers...)"
+                required
+              ></textarea>
+            </div>
+
+            <!-- Duration Selection -->
+            <div class="field-block">
+              <div class="label-row">
+                <label class="field-label"><span>Target Duration &amp; Cloud Scaling</span></label>
+                <span class="scaling-badge" id="scalingBadge">1 Cloud VM &bull; 4 Extend-Clip Hops</span>
+              </div>
+              <div class="duration-pills" id="durationSelector">
+                <button type="button" class="dur-pill" data-seconds="6" data-minutes="0.1" data-vms="1">
+                  <strong>6s</strong><span>Single Shot</span>
+                </button>
+                <button type="button" class="dur-pill" data-seconds="12" data-minutes="0.2" data-vms="1">
+                  <strong>12s</strong><span>2-Act Relay</span>
+                </button>
+                <button type="button" class="dur-pill active" data-seconds="24" data-minutes="0.4" data-vms="1">
+                  <strong>24s</strong><span>4-Act Master</span>
+                </button>
+                <button type="button" class="dur-pill" data-seconds="48" data-minutes="0.8" data-vms="2">
+                  <strong>48s</strong><span>2 Cloud VMs</span>
+                </button>
+                <button type="button" class="dur-pill" data-seconds="60" data-minutes="1.0" data-vms="3">
+                  <strong>1 Min</strong><span>3 Cloud VMs</span>
+                </button>
+                <button type="button" class="dur-pill" data-seconds="120" data-minutes="2.0" data-vms="5">
+                  <strong>2 Min</strong><span>5 Cloud VMs</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Resolution & Visual Aesthetic -->
+            <div class="two-col">
+              <div class="field-block">
+                <label class="field-label" for="resolutionSelect"><span>Output Quality</span></label>
+                <select id="resolutionSelect" class="cinema-select">
+                  <option value="1920x1080" selected>1080p Full HD (DIS Flow + Lanczos4)</option>
+                  <option value="1280x720">720p HD (Fast Cloud Stream)</option>
+                </select>
+              </div>
+
+              <div class="field-block">
+                <label class="field-label" for="animeStyleSelect"><span>Visual Aesthetic</span></label>
+                <select id="animeStyleSelect" class="cinema-select">
+                  <option value="wan_2_1_realistic" selected>Photorealistic 8K Cinema</option>
+                  <option value="ufotable_digital">Ufotable Digital Anime</option>
+                  <option value="shinkai_cinematic">Makoto Shinkai Atmosphere</option>
+                  <option value="mappa_action">MAPPA High-Velocity Action</option>
+                  <option value="ghibli_classic">Studio Ghibli Painterly</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Optional Backend Video-to-Video Reference -->
+            <details class="v2v-drawer" id="v2vDrawer">
+              <summary>🎞️ Optional Video-to-Video Reference Upload (Requires Connected API Backend)</summary>
+              <div class="upload-box" id="uploadDropzone">
+                <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/webm" hidden>
+                <p><strong>Click or drag MP4/MOV/WEBM</strong> to stylize existing footage</p>
+                <span id="uploadedFileName" class="upload-status">No source footage attached</span>
+              </div>
+            </details>
+
+            <!-- Primary CTA -->
+            <div class="cta-stack">
+              <button type="submit" id="generateBtn" class="btn-cinema-primary">
+                <span id="generateBtnIcon">🚀</span>
+                <span id="generateBtnText">Generate 1080p Video in 24/7 Cloud</span>
+              </button>
+              <div class="cta-footnote" id="executionHint">
+                Runs on GitHub Cloud VMs + ZeroGPU &rarr; publishes automatically to 24/7 Gallery CDN.
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <!-- RIGHT COLUMN: Screening Theater & Cloud Pipeline Monitor -->
+        <div class="glass-card theater-panel">
+          <div class="card-head">
+            <div>
+              <h2 id="theaterTitle">1080p Screening Theater</h2>
+              <p class="card-sub" id="theaterSubtitle">Streaming live from 24/7 GitHub Releases Cloud CDN</p>
+            </div>
+            <span class="state-badge idle" id="jobStateTag">Featured Master</span>
+          </div>
+
+          <!-- Hero Video Player -->
+          <div class="theater-frame">
+            <video id="finalVideoPlayer" class="theater-video" controls playsinline preload="metadata" autoplay muted loop>
+              <source id="videoSource" src="" type="video/mp4">
+            </video>
+            <div class="theater-overlay-pill" id="theaterOverlayPill">1920&times;1080 &bull; 24fps &bull; LTX-Video + Wan 2.2</div>
+          </div>
+
+          <!-- Action Bar -->
+          <div class="theater-actions">
+            <div class="spec-chips" id="activeSpecChips">
+              <span class="spec-chip">H.264 High + AAC Stereo</span>
+              <span class="spec-chip">ZeroGPU Diffusion</span>
+              <span class="spec-chip" id="specJobChip">Job: fc_a45a0cc1cc</span>
+            </div>
+            <div class="btn-row">
+              <a id="downloadVideoBtn" class="btn-ghost" href="#" download="freecloud_1080p.mp4" target="_blank" rel="noopener">
+                ⬇️ Download MP4
+              </a>
+              <button type="button" id="remixCurrentBtn" class="btn-ghost">
+                ♻️ Remix Prompt
+              </button>
+              <a id="openRunLinkBtn" class="btn-ghost" href="#" target="_blank" rel="noopener" style="display: none;">
+                ↗️ View Cloud Logs
+              </a>
+            </div>
+          </div>
+
+          <!-- Live Render Pipeline Telemetry -->
+          <div class="pipeline-box" id="pipelineMonitorBox">
+            <div class="pipeline-top">
+              <span id="progressStage">Cloud pipeline idle &mdash; ready to dispatch on GitHub VMs</span>
+              <span id="progressPercent" class="mono-pct">Ready</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" id="progressBarFill" style="width: 0%;"></div>
+            </div>
+            <div class="telemetry-row">
+              <div class="tele-stat"><span>Mode</span><strong id="teleMode">Serverless GHA</strong></div>
+              <div class="tele-stat"><span>Elapsed</span><strong id="telemetryElapsed">0s</strong></div>
+              <div class="tele-stat"><span>Cluster</span><strong id="telemetryFleet">Ready</strong></div>
+              <div class="tele-stat"><span>Upscale</span><strong>DIS Flow 1080p</strong></div>
+            </div>
+            <div class="worker-nodes-strip" id="workerGrid"></div>
+          </div>
+
+          <!-- Token Prompt Helper Banner (Shown only in Serverless mode without PAT) -->
+          <div class="serverless-hint-card" id="serverlessHintBanner" style="display: none;">
+            <div class="sh-left">
+              <strong>Want 1-click Cloud Generation from anywhere (phone or PC off)?</strong>
+              <span>Add your fine-grained GitHub Token once (stored only in your browser), or dispatch straight via GitHub Actions.</span>
+            </div>
+            <div class="sh-actions">
+              <button type="button" id="quickConnectTokenBtn" class="mini-btn mini-btn-glow">🔑 Save Token</button>
+              <a id="directGhaLink" class="mini-btn" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/actions/workflows/autonomous_studio.yml" target="_blank" rel="noopener">↗️ GitHub Actions</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: 24/7 CLOUD GALLERY ==================== -->
+    <section id="tab-gallery" class="tab-panel">
+      <div class="glass-card">
+        <div class="card-head">
+          <div>
+            <h2>24/7 Public Cloud Video Library</h2>
+            <p class="card-sub">Every rendered 1080p MP4 published cleanly to GitHub Releases &mdash; streams worldwide even with your PC turned off</p>
+          </div>
+          <button type="button" id="refreshGalleryBtn" class="mini-btn">🔄 Refresh Catalog</button>
+        </div>
+
+        <div class="gallery-grid" id="cloudGalleryGrid">
+          <div class="gallery-loading">Loading 24/7 Cloud Release catalog...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: CLOUD ARCHITECTURE & DEPLOY ==================== -->
+    <section id="tab-cloud" class="tab-panel">
+      <div class="cloud-grid">
+        <div class="glass-card">
+          <div class="card-head">
+            <div>
+              <h2>100% Zero-PC Serverless Architecture</h2>
+              <p class="card-sub">Nothing depends on your workstation or tunnels</p>
+            </div>
+            <span class="pill pill-emerald">Always Online</span>
+          </div>
+          <div class="arch-steps">
+            <div class="arch-step">
+              <div class="step-num">1</div>
+              <div>
+                <strong>GitHub Pages 24/7 Web UI</strong>
+                <p>This interface is deployed statically via <code>.github/workflows/deploy_pages.yml</code> so it loads on any phone or desktop 24/7 without your PC.</p>
+              </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">2</div>
+              <div>
+                <strong>Autonomous GitHub Actions Cloud Director</strong>
+                <p><code>.github/workflows/autonomous_studio.yml</code> dynamically shards videos across parallel Ubuntu cloud VMs, rotating fresh Azure IPs for ZeroGPU quotas.</p>
+              </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">3</div>
+              <div>
+                <strong>Multi-Engine ZeroGPU Diffusion + Extend-Clip I2V</strong>
+                <p>Chained rendering across <strong>LTX-Video Distilled</strong>, <strong>Wan 2.2 I2V</strong>, and <strong>HunyuanVideo 1.5</strong> with <strong>DIS Optical Flow</strong> 1080p upscaling &amp; AAC stereo synthesis.</p>
+              </div>
+            </div>
+            <div class="arch-step">
+              <div class="step-num">4</div>
+              <div>
+                <strong>GitHub Releases 24/7 Video CDN</strong>
+                <p>Finished 1080p MP4 masters automatically publish to the <code>cloud-gallery</code> release with HTTP byte-range seeking and instant browser playback.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div class="card-head">
+            <div>
+              <h2>Optional 24/7 Cloud Backend Container</h2>
+              <p class="card-sub">Deploy FastAPI orchestrator to Render or HuggingFace Docker Spaces</p>
+            </div>
+            <span class="pill pill-cyan">Docker Ready</span>
+          </div>
+          <p class="deploy-desc">
+            Want visitors to trigger jobs cleanly without entering a personal GitHub token in their browser? Deploy the included <code>Dockerfile</code> &amp; <code>render.yaml</code> on Render Free Tier or a HuggingFace Docker Space, set <code>GITHUB_PAT_TOKEN</code> securely in server secrets, and paste that URL inside <strong>Connect Cloud</strong>.
+          </p>
+          <div class="deploy-meta">
+            <div class="diag-row"><span>Repository</span><code>pratham31sinha-boop/FreeCloud-AI-Studio</code></div>
+            <div class="diag-row"><span>Workflow</span><code>autonomous_studio.yml</code></div>
+            <div class="diag-row"><span>Release CDN Tag</span><code>cloud-gallery</code></div>
+            <div class="diag-row"><span>Active Endpoint</span><code id="diagBackendEndpoint">GitHub Serverless REST API</code></div>
+          </div>
+          <div class="btn-row" style="margin-top: 16px;">
+            <a class="btn-ghost" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/actions/workflows/autonomous_studio.yml" target="_blank" rel="noopener">
+              🚀 Open Autonomous Workflow
+            </a>
+            <a class="btn-ghost" href="https://github.com/pratham31sinha-boop/FreeCloud-AI-Studio/releases/tag/cloud-gallery" target="_blank" rel="noopener">
+              📦 Browse Release Assets
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Cloud Connection Settings Modal -->
+  <div class="modal-backdrop" id="cloudModal" hidden>
+    <div class="modal-dialog glass-card" role="dialog" aria-labelledby="modalTitle">
+      <div class="card-head">
+        <div>
+          <h3 id="modalTitle">☁️ 24/7 Cloud Connection Settings</h3>
+          <p class="card-sub">Stored strictly in your browser's localStorage &mdash; zero data leaves your device</p>
+        </div>
+        <button type="button" id="closeCloudModalBtn" class="mini-btn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="field-block">
+          <label class="field-label" for="inputCloudApiUrl">
+            <span>Optional Cloud Backend URL (Render / HuggingFace Space / Custom FastAPI)</span>
+          </label>
+          <input type="url" id="inputCloudApiUrl" class="cinema-input" placeholder="https://your-freecloud-backend.onrender.com (leave empty for Pure GitHub Serverless)">
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" for="inputGhToken">
+            <span>GitHub Fine-Grained Token (for 1-Click Serverless Trigger from GitHub Pages)</span>
+          </label>
+          <input type="password" id="inputGhToken" class="cinema-input" placeholder="github_pat_... (needs Actions Read/Write on FreeCloud-AI-Studio)">
+          <span class="field-hint">With this saved in browser storage, clicking Generate triggers GitHub Actions Cloud VMs directly with zero PC connected.</span>
+        </div>
+      </div>
+
+      <div class="modal-foot">
+        <button type="button" id="clearCloudSettingsBtn" class="btn-ghost">Reset</button>
+        <button type="button" id="saveCloudSettingsBtn" class="btn-cinema-primary" style="width: auto; padding: 10px 22px;">Save &amp; Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./js/app.js"></script>
+</body>
+</html>
