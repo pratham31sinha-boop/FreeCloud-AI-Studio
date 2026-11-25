@@ -323,10 +323,24 @@ def _gh_request(url: str, token: str, method: str = "GET", json_body: Any = None
         data = raw_bytes
         headers["Content-Type"] = content_type or "application/octet-stream"
 
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        raw = resp.read().decode("utf-8", errors="ignore")
-        return json.loads(raw) if raw else {}
+    last_exc: Optional[Exception] = None
+    for attempt in range(5):
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                raw = resp.read().decode("utf-8", errors="ignore")
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code in (429, 500, 502, 503, 504) and attempt < 4:
+                wait_s = 2 * (attempt + 1)
+                logger.warning("GitHub API transient HTTP %d on %s %s; retrying in %ds...", exc.code, method, url, wait_s)
+                time.sleep(wait_s)
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    return {}
 
 
 def ensure_gallery_release(repo: str, tag: str, token: str) -> Dict[str, Any]:
