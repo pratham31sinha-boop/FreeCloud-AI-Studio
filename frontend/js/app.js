@@ -35,6 +35,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const storyPromptInput = document.getElementById('storyPromptInput');
   const animeStyleSelect = document.getElementById('animeStyleSelect');
   const resolutionSelect = document.getElementById('resolutionSelect');
+  const modelEngineSelect = document.getElementById('modelEngineSelect');
+  const executionModeSelect = document.getElementById('executionModeSelect');
+  const videoCodeInspector = document.getElementById('videoCodeInspector');
+  const videoCodeSummaryTag = document.getElementById('videoCodeSummaryTag');
+  const videoCodeScriptBox = document.getElementById('videoCodeScriptBox');
   const uploadDropzone = document.getElementById('uploadDropzone');
   const videoFileInput = document.getElementById('videoFileInput');
   const uploadedFileName = document.getElementById('uploadedFileName');
@@ -432,6 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 2. Preload Jagdhatri details
       storyPromptInput.value = JAGDHATRI_STORY_PROMPT;
       animeStyleSelect.value = 'ufotable_digital';
+      uploadedVideoId = 'jagdhatri_ep224_reel.mp4';
       uploadedFileName.textContent = '✓ Using: jagdhatri_ep224_reel.mp4 (Sample Reference)';
       uploadedFileName.style.color = '#34d399';
 
@@ -575,17 +581,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const promptText = storyPromptInput.value.trim();
     if (!promptText) return;
 
+    const resVal = (resolutionSelect?.value || '1920x1080').split('x');
+    const targetWidth = parseInt(resVal[0], 10) || 1920;
+    const targetHeight = parseInt(resVal[1], 10) || 1080;
+    const selectedModel = modelEngineSelect?.value || 'auto_relay';
+    const selectedExecMode = executionModeSelect?.value || 'independent_turbo';
+
     const payload = {
       original_video_id: uploadedVideoId,
       story_prompt: promptText,
       duration_minutes: selectedDuration,
       anime_style: animeStyleSelect.value,
+      model_name: selectedModel,
+      model_relay: selectedModel === 'auto_relay',
+      width: targetWidth,
+      height: targetHeight,
+      execution_mode: selectedExecMode,
       character_ids: ['jagdhatri_main', 'jash_lead'],
       fps: 24,
       continuity_identity_strict: document.getElementById('checkIdentity').checked,
       continuity_motion_tracking: document.getElementById('checkMotion').checked,
       continuity_audio_sync: document.getElementById('checkAudioSync').checked,
     };
+
+    if (videoCodeInspector) {
+      videoCodeInspector.style.display = 'none';
+    }
 
     setGeneratingState(true);
 
@@ -647,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 1500);
+    }, 800);
   }
 
   function updateDashboard(data) {
@@ -703,16 +724,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const statusClass = chunk.status.toLowerCase();
       const workerLabel = chunk.assigned_worker_id
-        ? chunk.assigned_worker_id.replace('gha-runner-', 'Cloud Server ')
-        : `Cloud Server Slot ${idx + 1} (16GB RAM)`;
+        ? chunk.assigned_worker_id.replace('gha-runner-', 'Cloud ').replace('turbo-local-', 'Turbo ')
+        : `Node Slot ${idx + 1}`;
+      const modelTag = (chunk.model_name || 'wan_2_1').toUpperCase();
+      const extBadge = chunk.is_extended_clip ? ' • EXTENDED' : '';
 
       card.innerHTML = `
-        <span class="worker-name" title="${workerLabel}">${workerLabel}</span>
-        <span class="worker-task">Shot ${idx + 1} (${chunk.start_sec.toFixed(1)}s - ${chunk.end_sec.toFixed(1)}s)</span>
+        <span class="worker-name" title="${workerLabel}">${workerLabel} [${modelTag}]</span>
+        <span class="worker-task">Shot ${idx + 1} (${chunk.start_sec.toFixed(1)}s - ${chunk.end_sec.toFixed(1)}s)${extBadge}</span>
         <span class="worker-status ${statusClass}">${chunk.status.toUpperCase()}</span>
       `;
       workerGrid.appendChild(card);
     });
+
+    // Show latest Video-as-Code handoff state if any chunk completed or handed off
+    if (videoCodeInspector && videoCodeScriptBox) {
+      const codedChunks = chunks.filter((c) => c.video_code && c.video_code.scene_code_script);
+      if (codedChunks.length > 0) {
+        const latest = codedChunks[codedChunks.length - 1];
+        videoCodeInspector.style.display = 'block';
+        videoCodeSummaryTag.textContent = `Shot ${latest.sequence_index + 1} (${latest.model_name}) → Shot ${latest.sequence_index + 2}`;
+        videoCodeScriptBox.textContent = latest.video_code.scene_code_script;
+      }
+    }
 
     simulateWorkerBtn.style.display = 'inline-block';
   }
@@ -759,46 +793,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ==================== WORKER SIMULATION / EXECUTION ====================
+  // ==================== WORKER TURBO BOOST EXECUTION ====================
   simulateWorkerBtn.addEventListener('click', async () => {
     if (!currentJobId) return;
-
-    const simWorkerId = `sim_worker_${Math.floor(Math.random() * 1000)}`;
-
+    simulateWorkerBtn.disabled = true;
+    simulateWorkerBtn.textContent = 'Launching Turbo Worker...';
     try {
-      await fetch('/api/v1/workers/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worker_id: simWorkerId, runner_type: 'local-simulator' }),
-      });
-
-      const claimRes = await fetch(`/api/v1/workers/claim-task?worker_id=${simWorkerId}`, {
-        method: 'POST',
-      });
-      const lease = await claimRes.json();
-
-      if (lease.has_task) {
-        await fetch('/api/v1/workers/complete-chunk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            worker_id: simWorkerId,
-            chunk_id: lease.chunk_id,
-            job_id: lease.job_id,
-            sha256_checksum: 'sha256_verified_render_chunk',
-            render_duration_sec: 2.5,
-            output_frames_count: 24,
-            continuity_metrics: {
-              identity_score: 0.93,
-              motion_score: 0.90,
-              flicker_score: 0.08,
-              audio_sync_score: 0.94,
-            },
-          }),
-        });
+      const res = await fetch(`/api/v1/jobs/${currentJobId}/boost`, { method: 'POST' });
+      if (res.ok) {
+        simulateWorkerBtn.textContent = '⚡ Turbo Worker Boost Active';
+      } else {
+        simulateWorkerBtn.textContent = 'Boost with Independent Worker';
+        simulateWorkerBtn.disabled = false;
       }
     } catch (err) {
-      console.error('Simulated worker failed:', err);
+      console.error('Worker boost failed:', err);
+      simulateWorkerBtn.disabled = false;
     }
   });
 

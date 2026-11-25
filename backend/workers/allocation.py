@@ -15,6 +15,7 @@ FreeCloud AI Studio architecture specification:
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from typing import List, Tuple
 from backend.workers.models import JobRequest, TaskChunk, TaskChunkStatus
@@ -64,28 +65,46 @@ def generate_progressive_act_beats(story_prompt: str, total_acts: int = 4) -> Li
     """Generate narrative act progression beats tailored to the subject and prompt."""
     p = story_prompt.lower()
 
-    if any(k in p for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
+    def has_word(*words: str) -> bool:
+        pattern = r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b"
+        return bool(re.search(pattern, p))
+
+    if has_word("car", "supercar", "hypercar", "vehicle", "race", "racing", "highway", "drift", "driving"):
         return [
             "Act 1 (Ignition & Acceleration): Sleek titanium hypercar roaring out of a mountain pass onto the coastal cliffside highway at golden hour sunset, twin LED headlights piercing through twilight mist, gleaming metallic reflections",
             "Act 2 (High-Speed Cruising): Accelerating at high velocity along the winding cliffside road, ocean waves crashing on rocks far below, tires gripping asphalt with high-speed motion blur, warm sun flare gleaming on windshield",
             "Act 3 (Apex Drift Maneuver): Aggressive dynamic drift around a dramatic cliffside hairpin curve, tire smoke billowing, glowing red brake calipers, camera tracking the centrifugal slide with intense kinetic momentum",
             "Act 4 (Hero Departure): Surging at full throttle down the wide illuminated coastal straightaway toward the vibrant neon-lit metropolis skyline on the horizon at dusk",
         ]
-    elif any(k in p for k in ("astronaut", "space", "alien", "planet", "galaxy", "mars", "cosmos", "rover")):
+    elif has_word("jagdhatri", "jas", "jash", "swayambhu", "ambush", "warehouse", "operative", "martial"):
+        return [
+            "Act 1 (Tactical Infiltration): Jagdhatri (Codename: JAS) enters the dimly lit industrial warehouse, scanning catwalks and shadows with razor-sharp vigilance",
+            "Act 2 (Ambush & Counter-Strike): Detecting hostile operatives in motion, executing a lightning-fast defensive martial arts spin-kick with sweeping momentum",
+            "Act 3 (Perimeter Lock): Continuing seamlessly as Jash covers the outer exits, high-contrast muzzle flashes and neon warehouse spotlights illuminating the combat zone",
+            "Act 4 (Classified Extraction): Securing the encrypted intelligence briefcase in unbroken poise while the warehouse dust settles into the night skyline",
+        ]
+    elif has_word("elven", "forest", "bioluminescence", "bioluminescent", "cathedral", "fairy", "wings", "guardian"):
+        return [
+            "Act 1 (Sanctuary Awakening): Ancient bioluminescent forest cathedral glowing under ethereal starlight shafts as the sacred guardian spirit begins to materialize",
+            "Act 2 (Translucent Wings Unfurl): Expanding luminous wings of liquid starlight amidst drifting spores and ancient rune-carved mossy pillars",
+            "Act 3 (Celestial Resonance): Rising in graceful harmonic suspension as emerald and cyan light waves ripple outward through the enchanted canopy",
+            "Act 4 (Ascension Into Starlight): Surging skyward through the towering cathedral arches, scattering radiant trails of bioluminescent constellations",
+        ]
+    elif has_word("astronaut", "space", "alien", "planet", "galaxy", "mars", "cosmos", "rover", "nebula"):
         return [
             "Act 1 (Touchdown & First Steps): Astronaut stepping onto glowing alien planetary soil, gold-tinted reflective visor catching distant binary suns, atmospheric dust drifting",
             "Act 2 (Traversal): Walking past crystalline rock spires and bioluminescent geysers, scanning alien geological formations with high-tech scanner",
             "Act 3 (Discovery): Approaching an ancient floating alien monolith, geometric engravings pulsing with radiant blue energy as the astronaut reaches forward",
             "Act 4 (Ascension): The alien artifact unleashes a swirling column of celestial light, camera pulling up into the starry nebula cosmos",
         ]
-    elif any(k in p for k in ("samurai", "cyberpunk", "ronin", "tokyo", "katana", "ninja", "blade")):
+    elif has_word("samurai", "cyberpunk", "ronin", "tokyo", "katana", "ninja", "blade"):
         return [
             "Act 1 (Atmospheric Entrance): Cybernetic ronin walking slowly through a rain-drenched neon Tokyo alleyway at night, trench coat billowing in the wind",
             "Act 2 (Drawing the Blade): Stepping through puddles reflecting vibrant holographic billboards, drawing a glowing energy katana with an electric hum",
             "Act 3 (Combat Climax): Dynamic spinning strike through falling rain, cutting holographic light beams with sparks and arcs of electric energy",
             "Act 4 (Silent Exit): Smoothly sheathing the glowing blade as rain falls, fading into the dark shadows of the towering neon skyline",
         ]
-    elif any(k in p for k in ("panther", "leopard", "tiger", "lion", "cat", "feline")):
+    elif has_word("panther", "leopard", "tiger", "lion", "cat", "feline", "jaguar"):
         return [
             "Act 1 (Emergence): The majestic predator stealthily emerges from deep misty rainforest shadows into the light, initiating a smooth predatory prowl, glowing emerald eyes scanning ahead",
             "Act 2 (Progression): Continuing forward through the terrain, stepping across glistening wet mossy riverstones, water droplets flying off paws, sleek fur rippling with continuous momentum",
@@ -101,6 +120,9 @@ def generate_progressive_act_beats(story_prompt: str, total_acts: int = 4) -> Li
         ]
 
 
+RELAY_MODEL_SEQUENCE = ["wan_2_1", "minimax_h3", "hunyuan_video"]
+
+
 def plan_task_chunks(
     job_id: str,
     request: JobRequest,
@@ -109,7 +131,8 @@ def plan_task_chunks(
     """Break a video generation job into sequential task chunks for distributed workers.
 
     Each chunk corresponds to a continuous segment of time with its narrative prompt,
-    character IDs, and continuity references.
+    character IDs, and continuity references. Supports single-model lock or
+    sequential multi-model relay (Model 1 -> Video-as-Code + Last Frame -> Model 2).
     """
     total_seconds = max(10.0, float(request.duration_minutes * 60.0))
     worker_count = calculate_worker_allocation(request.duration_minutes)
@@ -123,15 +146,26 @@ def plan_task_chunks(
     current_time = 0.0
 
     act_beats = generate_progressive_act_beats(request.story_prompt, total_acts=calculated_chunks)
+    req_model = getattr(request, "model_name", "wan_2_1") or "wan_2_1"
+    use_relay = bool(getattr(request, "model_relay", False) or req_model == "auto_relay")
 
     for idx in range(calculated_chunks):
         end_time = min(total_seconds, current_time + chunk_duration)
         beat_text = act_beats[idx % len(act_beats)]
+        chunk_model = RELAY_MODEL_SEQUENCE[idx % len(RELAY_MODEL_SEQUENCE)] if use_relay else req_model
+
         # Unified continuous scene prompt with progressive act continuation
-        scene_prompt = (
-            f"[Act {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
-            f"{request.story_prompt.strip()} -- {beat_text}"
-        )
+        if idx == 0:
+            scene_prompt = (
+                f"[Act {idx + 1}/{calculated_chunks} | {current_time:.1f}s-{end_time:.1f}s] "
+                f"{request.story_prompt.strip()} -- {beat_text}"
+            )
+        else:
+            scene_prompt = (
+                f"[EXTENDED CLIP {idx + 1}/{calculated_chunks} | Continuing seamlessly from Clip {idx} "
+                f"Last Frame Image & Coded Video State ({current_time:.1f}s-{end_time:.1f}s)] "
+                f"Next Scene Continuation: {beat_text} | Original Story Prompt: {request.story_prompt.strip()}"
+            )
 
         chunk = TaskChunk(
             chunk_id=f"{job_id}_chk_{idx + 1:03d}_{uuid.uuid4().hex[:6]}",
@@ -142,8 +176,9 @@ def plan_task_chunks(
             duration_sec=round(end_time - current_time, 2),
             prompt_segment=scene_prompt,
             anime_style=str(request.anime_style),
-            model_name=getattr(request, "model_name", "wan_2_1"),
+            model_name=chunk_model,
             anchor_frame_url=f"/api/v1/jobs/{job_id}/anchor/{idx}",
+            is_extended_clip=(idx > 0),
             character_ids=list(request.character_ids),
             motion_reference_id=f"motion_{job_id}_seq_{idx:03d}" if request.continuity_motion_tracking else None,
             status=TaskChunkStatus.PENDING,

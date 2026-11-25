@@ -176,3 +176,23 @@ def test_worker_failure_and_retry():
 
     asyncio.run(_run())
 
+
+def test_word_boundary_prompt_beats_and_multi_model_relay():
+    """Verify word-boundary theme beats (no 'cat'->'cathedral' false positive) and multi-model relay."""
+    req = JobRequest(
+        story_prompt="Enchanted elven forest cathedral bathed in celestial bioluminescence.",
+        duration_minutes=0.5,
+        model_name="auto_relay",
+        model_relay=True,
+    )
+    chunks = plan_task_chunks("test_relay_001", req, target_chunk_sec=15.0)
+    assert len(chunks) == 4
+    assert "predator" not in chunks[0].prompt_segment.lower()
+    assert chunks[0].model_name == "wan_2_1"
+    assert chunks[1].model_name == "minimax_h3"
+    assert chunks[2].model_name == "hunyuan_video"
+    assert chunks[0].is_extended_clip is False
+    assert chunks[1].is_extended_clip is True
+    assert "EXTENDED CLIP" in chunks[1].prompt_segment
+
+

@@ -53,6 +53,7 @@ class ModelEngine(str, Enum):
     WAN_2_1 = "wan_2_1"
     MINIMAX_H3 = "minimax_h3"
     HUNYUAN_VIDEO = "hunyuan_video"
+    AUTO_RELAY = "auto_relay"
 
 
 class TaskChunk(BaseModel):
@@ -68,6 +69,10 @@ class TaskChunk(BaseModel):
     anime_style: str
     model_name: Optional[str] = "wan_2_1"
     anchor_frame_url: Optional[str] = None
+    is_extended_clip: bool = False
+    previous_chunk_id: Optional[str] = None
+    previous_video_code: Optional[Dict[str, Any]] = None
+    video_code: Optional[Dict[str, Any]] = None
     master_seed: Optional[int] = None
     character_ids: List[str] = Field(default_factory=list)
     motion_reference_id: Optional[str] = None
@@ -116,7 +121,17 @@ class JobRequest(BaseModel):
     anime_style: AnimeStyle = AnimeStyle.SHINKAI_CINEMATIC
     model_name: str = Field(
         default="wan_2_1",
-        description="Foundation video generation engine: wan_2_1, minimax_h3, or hunyuan_video",
+        description="Foundation video generation engine: wan_2_1, minimax_h3, hunyuan_video, or auto_relay",
+    )
+    width: int = Field(default=1920, ge=320, le=3840)
+    height: int = Field(default=1080, ge=240, le=2160)
+    execution_mode: str = Field(
+        default="cloud_github",
+        description="independent_turbo | hybrid | cloud_github",
+    )
+    model_relay: bool = Field(
+        default=False,
+        description="When true, relay sequential extended clips across distinct foundation models with Video-as-Code handoff",
     )
     character_ids: List[str] = Field(
         default_factory=lambda: ["jagdhatri_main", "jash_lead"]

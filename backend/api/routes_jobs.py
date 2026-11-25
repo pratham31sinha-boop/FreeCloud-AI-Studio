@@ -49,6 +49,18 @@ def cancel_job(job_id: str) -> Dict[str, str]:
     return {"message": f"Job {job_id} cancelled"}
 
 
+@router.post("/{job_id}/boost")
+def boost_job_with_turbo_worker(job_id: str) -> Dict[str, Any]:
+    """Attach an independent turbo worker to an in-flight job for faster completion."""
+    res = worker_orchestrator.boost_job(job_id)
+    if not res.get("boosted"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=res.get("reason", f"Could not boost job {job_id}"),
+        )
+    return res
+
+
 @router.get("/{job_id}/video")
 def download_final_video(job_id: str):
     """Download or stream the generated coherent video output."""
@@ -73,7 +85,12 @@ def get_master_anchor_image(job_id: str):
     clean_story = (prompt or "").strip()
     m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
 
-    anchor_path = storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
+    req_w = getattr(job.request, "width", 1920) if job else 1920
+    req_h = getattr(job.request, "height", 1080) if job else 1080
+
+    anchor_path = storage_manager.get_or_create_master_anchor(
+        job_id=job_id, prompt=clean_story, seed=m_seed, width=req_w, height=req_h
+    )
     return FileResponse(
         path=str(anchor_path),
         media_type="image/png",
@@ -95,15 +112,37 @@ def get_act_anchor_image(job_id: str, seq_idx: int):
     clean_story = (chunk_prompt or "").strip()
     m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
 
+    req_w = getattr(job.request, "width", 1920) if job else 1920
+    req_h = getattr(job.request, "height", 1080) if job else 1080
+
     anchor_path = storage_manager.get_or_create_act_anchor(
         job_id=job_id,
         seq_idx=seq_idx,
         prompt=clean_story,
         seed=m_seed,
+        width=req_w,
+        height=req_h,
     )
     return FileResponse(
         path=str(anchor_path),
         media_type="image/png",
         filename=f"{job_id}_anchor_act_{seq_idx}.png",
+    )
+
+
+@router.get("/{job_id}/video-code/{seq_idx}")
+def get_chunk_video_code(job_id: str, seq_idx: int) -> Dict[str, Any]:
+    """Serve the coded Video-as-Code continuity manifest for a completed chunk."""
+    code_data = storage_manager.get_video_code(job_id=job_id, seq_idx=seq_idx)
+    if code_data:
+        return code_data
+    job = worker_orchestrator.get_job(job_id)
+    if job and 0 <= seq_idx < len(job.chunks):
+        chunk = job.chunks[seq_idx]
+        if chunk.video_code:
+            return chunk.video_code
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Video-as-Code manifest for job {job_id} chunk {seq_idx} not found.",
     )
 

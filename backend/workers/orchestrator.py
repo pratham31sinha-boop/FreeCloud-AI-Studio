@@ -6,11 +6,21 @@ aggregation, runner heartbeats, retries, and final video assembly.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import subprocess
+import sys
+import threading
 import time
 import uuid
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from backend.config import settings
+from backend.continuity.video_code import (
+    build_extended_clip_prompt,
+    extract_handoff_bundle_from_mp4,
+)
 from backend.storage.manager import storage_manager
 from backend.storage.video_processor import video_processor
 from backend.workers.allocation import calculate_worker_allocation, plan_task_chunks
@@ -104,42 +114,103 @@ class WorkerOrchestrator:
         )
         self.jobs[job_id] = record
 
-        # Pre-synthesize Master Character Anchor and initial Act 0 Anchor
+        # Pre-synthesize Master Character Anchor and initial Act 0 Anchor in target resolution
         clean_story = (request.story_prompt or "").strip()
         m_seed = abs(hash(f"{job_id}_{clean_story[:40]}")) % 1000000
+        req_w = getattr(request, "width", 1920)
+        req_h = getattr(request, "height", 1080)
         try:
-            from backend.storage.manager import storage_manager
-            storage_manager.get_or_create_master_anchor(job_id=job_id, prompt=clean_story, seed=m_seed)
-            # Synthesize Act 0 initial anchor; subsequent Acts (1, 2, 3...) are dynamically extracted
-            # from the exact last frame of each completed clip using Extend Clip Technology
+            storage_manager.get_or_create_master_anchor(
+                job_id=job_id, prompt=clean_story, seed=m_seed, width=req_w, height=req_h
+            )
             storage_manager.get_or_create_act_anchor(
                 job_id=job_id,
                 seq_idx=0,
                 prompt=chunks[0].prompt_segment if chunks else clean_story,
                 seed=m_seed,
+                width=req_w,
+                height=req_h,
             )
         except Exception as anchor_err:
             logger.warning("Could not pre-synthesize initial master anchor: %s", anchor_err)
 
-        # Dispatch workers via GitHub Actions or local dispatcher
+        # Dispatch workers according to execution_mode
         record.status = JobStatus.ORCHESTRATING
-        record.stage_message = f"Orchestrating {target_workers} workers"
+        exec_mode = getattr(request, "execution_mode", "cloud_github") or "cloud_github"
         model_to_use = getattr(request, "model_name", "wan_2_1")
-        dispatch_result = await self.dispatcher.dispatch_workers(
-            job_id=job_id,
-            worker_count=target_workers,
-            extra_inputs={
-                "duration_mins": str(request.duration_minutes),
-                "model_name": model_to_use,
-            },
-        )
-        logger.info("Job %s worker dispatch response: %s", job_id, dispatch_result)
+
+        if exec_mode == "independent_turbo":
+            record.stage_message = "Starting Independent Turbo Engine (Zero External Dependencies)"
+            dispatch_result = self._spawn_local_turbo_worker(job_id=job_id, model_name=model_to_use)
+        elif exec_mode == "hybrid":
+            record.stage_message = f"Starting Hybrid Instant + {target_workers} Cloud Nodes"
+            dispatch_result = await self.dispatcher.dispatch_workers(
+                job_id=job_id,
+                worker_count=target_workers,
+                extra_inputs={
+                    "duration_mins": str(request.duration_minutes),
+                    "model_name": model_to_use,
+                },
+            )
+            self._spawn_local_turbo_worker(job_id=job_id, model_name=model_to_use)
+        else:
+            record.stage_message = f"Orchestrating {target_workers} cloud workers"
+            dispatch_result = await self.dispatcher.dispatch_workers(
+                job_id=job_id,
+                worker_count=target_workers,
+                extra_inputs={
+                    "duration_mins": str(request.duration_minutes),
+                    "model_name": model_to_use,
+                },
+            )
+        logger.info("Job %s worker dispatch response (%s): %s", job_id, exec_mode, dispatch_result)
 
         record.status = JobStatus.RENDERING
-        record.stage_message = "Workers rendering scene chunks"
+        record.stage_message = (
+            "Independent Turbo Worker rendering scene chunks"
+            if exec_mode == "independent_turbo"
+            else "Workers rendering scene chunks"
+        )
         record.updated_at = time.time()
         self._save_jobs_to_disk()
         return record
+
+    def _spawn_local_turbo_worker(self, job_id: str, model_name: str = "wan_2_1") -> Dict[str, Any]:
+        """Launch a fast independent local worker subprocess tied to this job."""
+        try:
+            entrypoint = settings.base_dir / "github" / "worker_entrypoint.py"
+            if not entrypoint.is_file():
+                return {"dispatched": False, "error": "worker_entrypoint.py not found"}
+            worker_id = f"turbo-local-{job_id}"
+            local_url = f"http://127.0.0.1:{settings.port}"
+            cmd = [
+                sys.executable,
+                str(entrypoint),
+                "--backend-url",
+                local_url,
+                "--job-id",
+                job_id,
+                "--worker-id",
+                worker_id,
+                "--model",
+                model_name if model_name in ("wan_2_1", "minimax_h3", "hunyuan_video") else "wan_2_1",
+                "--max-idle-seconds",
+                "12",
+            ]
+            env = os.environ.copy()
+            env["FREECLOUD_TURBO_MODE"] = "1"
+            subprocess.Popen(
+                cmd,
+                cwd=str(settings.base_dir),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return {"dispatched": True, "mode": "independent_turbo", "worker_id": worker_id}
+        except Exception as exc:
+            logger.error("Failed spawning independent turbo worker: %s", exc)
+            return {"dispatched": False, "error": str(exc)}
 
     def register_worker(self, req: WorkerRegisterRequest) -> WorkerRegisterResponse:
         """Register a new or re-connected worker runner."""
@@ -176,7 +247,10 @@ class WorkerOrchestrator:
         return WorkerHeartbeatResponse(acknowledged=True, command="continue")
 
     def claim_task(
-        self, worker_id: str, character_registry: Optional[dict] = None
+        self,
+        worker_id: str,
+        character_registry: Optional[dict] = None,
+        job_id: Optional[str] = None,
     ) -> TaskLeaseResponse:
         """Lease the next available unassigned task chunk to a ready worker."""
         self.clean_stale_leases()
@@ -184,8 +258,11 @@ class WorkerOrchestrator:
         if not worker:
             return TaskLeaseResponse(has_task=False, message="Worker not registered")
 
-        # Scan active jobs for pending chunks
-        for job in self.jobs.values():
+        # Prioritize target job (if specified) and newest jobs first
+        ordered_jobs = sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
+        for job in ordered_jobs:
+            if job_id and job.job_id != job_id:
+                continue
             if job.status not in (JobStatus.ORCHESTRATING, JobStatus.RENDERING):
                 continue
 
@@ -242,7 +319,17 @@ class WorkerOrchestrator:
                         prompt_segment=chunk.prompt_segment,
                         anime_style=chunk.anime_style,
                         model_name=getattr(chunk, "model_name", getattr(job.request, "model_name", "wan_2_1")),
+                        width=getattr(job.request, "width", 1920),
+                        height=getattr(job.request, "height", 1080),
                         anchor_frame_url=chunk.anchor_frame_url or f"/api/v1/jobs/{job.job_id}/anchor/{chunk.sequence_index}",
+                        video_code_url=(
+                            f"/api/v1/jobs/{job.job_id}/video-code/{chunk.sequence_index - 1}"
+                            if chunk.sequence_index > 0
+                            else None
+                        ),
+                        is_extended_clip=bool(getattr(chunk, "is_extended_clip", chunk.sequence_index > 0)),
+                        previous_chunk_id=getattr(chunk, "previous_chunk_id", None),
+                        previous_video_code=getattr(chunk, "previous_video_code", None),
                         master_seed=m_seed,
                         characters=char_bundles,
                         total_chunks=len(job.chunks),
@@ -281,26 +368,66 @@ class WorkerOrchestrator:
         }
         chunk.updated_at = now
 
-        # EXTEND CLIP TECHNOLOGY:
-        # Extract the exact last frame of this completed chunk to serve as the starting anchor for the next chunk!
+        # EXTEND CLIP + VIDEO-AS-CODE CONTINUITY HANDOFF:
+        # Extract BOTH the exact last frame image AND complete programmatic video state
+        # ('video in the form of coding') to pass to the next model with explicit extended prompt.
         next_seq = chunk.sequence_index + 1
         next_chunk = next((c for c in job.chunks if c.sequence_index == next_seq), None)
-        if next_chunk:
-            artifact_file = storage_manager.get_chunk_artifact(job.job_id, chunk.chunk_id)
-            if artifact_file and artifact_file.is_file():
-                success = self._extract_last_frame_for_extension(
-                    artifact_path=artifact_file,
-                    job_id=job.job_id,
-                    next_seq=next_seq,
+        clean_story = (job.request.story_prompt or "").strip()
+        m_seed = abs(hash(f"{job.job_id}_{clean_story[:40]}")) % 1000000
+
+        artifact_file = storage_manager.get_chunk_artifact(job.job_id, chunk.chunk_id)
+        extracted_code: Optional[Dict[str, Any]] = req.video_code
+
+        if artifact_file and artifact_file.is_file():
+            anchor_target = storage_manager.artifacts_dir / f"{job.job_id}_anchor_act_{next_seq}.png"
+            code_target = storage_manager.get_video_code_path(job.job_id, chunk.sequence_index)
+            ok, bundle_code = extract_handoff_bundle_from_mp4(
+                artifact_path=artifact_file,
+                anchor_output_path=anchor_target,
+                code_output_path=code_target,
+                job_id=job.job_id,
+                chunk_index=chunk.sequence_index,
+                chunk_id=chunk.chunk_id,
+                model_engine=getattr(chunk, "model_name", "wan_2_1") or "wan_2_1",
+                prompt=chunk.prompt_segment,
+                end_timestamp_sec=chunk.end_sec,
+                total_duration_sec=float(job.request.duration_minutes * 60.0),
+                master_seed=m_seed,
+                character_ids=list(chunk.character_ids),
+                worker_state=req.video_code,
+            )
+            if ok and bundle_code:
+                extracted_code = bundle_code
+                chunk.video_code = bundle_code
+                logger.info(
+                    "Extend Clip + Video-Code: Extracted frame & coded state for Chunk %d -> %s",
+                    chunk.sequence_index,
+                    anchor_target.name,
                 )
-                if success:
-                    next_chunk.anchor_frame_url = f"/api/v1/jobs/{job.job_id}/anchor/{next_seq}"
-                    logger.info(
-                        "Extend Clip Technology: Handed off exact last frame of Chunk %d to Chunk %d (%s)",
-                        chunk.sequence_index,
-                        next_seq,
-                        next_chunk.anchor_frame_url,
-                    )
+
+        if not chunk.video_code and extracted_code:
+            chunk.video_code = extracted_code
+
+        if next_chunk:
+            next_chunk.anchor_frame_url = f"/api/v1/jobs/{job.job_id}/anchor/{next_seq}"
+            next_chunk.is_extended_clip = True
+            next_chunk.previous_chunk_id = chunk.chunk_id
+            next_chunk.previous_video_code = extracted_code
+            next_chunk.prompt_segment = build_extended_clip_prompt(
+                original_prompt=clean_story,
+                next_scene_segment=next_chunk.prompt_segment,
+                prev_chunk_index=chunk.sequence_index,
+                next_chunk_index=next_seq,
+                video_code=extracted_code,
+            )
+            logger.info(
+                "Extend Clip Handoff: Chunk %d (%s) -> Chunk %d (%s) with Last Frame + Video-Code + Extended Prompt",
+                chunk.sequence_index,
+                getattr(chunk, "model_name", "wan_2_1"),
+                next_seq,
+                getattr(next_chunk, "model_name", "wan_2_1"),
+            )
 
         worker = self.workers.get(req.worker_id)
         if worker:
@@ -318,8 +445,8 @@ class WorkerOrchestrator:
             )
         job.updated_at = now
 
-        # If all chunks are completed, assemble final video
-        if job.completed_chunks == job.total_chunks:
+        # If all chunks are completed, assemble final video once
+        if job.completed_chunks == job.total_chunks and job.status not in (JobStatus.ASSEMBLING, JobStatus.COMPLETED):
             self._assemble_final_video(job)
 
         self._save_jobs_to_disk()
@@ -411,7 +538,7 @@ class WorkerOrchestrator:
                 target_path = storage_manager.artifacts_dir / f"{job_id}_anchor_act_{next_seq}.png"
                 cv2.imwrite(str(target_path), last_frame)
                 logger.info(
-                    "Extend Clip Technology: Extracted last frame of %s (frame %d/%d) -> %s",
+                    "Extend Clip Technology: Extracted last frame of %s (frame %d) -> %s",
                     artifact_path.name,
                     frame_count,
                     target_path.name,
@@ -442,10 +569,13 @@ class WorkerOrchestrator:
             chunk_files = [f for f in chunk_artifacts if f.suffix.lower() in (".mp4", ".mov", ".webm")]
 
         audio_source = None
-        if job.request.original_video_id:
-            src_candidate = storage_manager.uploads_dir / job.request.original_video_id
-            if src_candidate.is_file():
-                audio_source = src_candidate
+        if job.request.original_video_id and chunk_files:
+            # Only pass separate audio_source if chunks don't already contain AAC audio
+            first_sig = video_processor._probe_stream_signature(chunk_files[0])
+            if not (first_sig and first_sig[3]):
+                src_candidate = storage_manager.uploads_dir / job.request.original_video_id
+                if src_candidate.is_file() and src_candidate.stat().st_size > 1000:
+                    audio_source = src_candidate
 
         video_metadata = {}
         try:
@@ -553,6 +683,16 @@ class WorkerOrchestrator:
                 chunk.error_message = "Cancelled"
         self._save_jobs_to_disk()
         return True
+
+    def boost_job(self, job_id: str) -> Dict[str, Any]:
+        """Launch an independent local turbo worker to accelerate any active job."""
+        job = self.jobs.get(job_id)
+        if not job or job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            return {"boosted": False, "reason": "Job not active"}
+        res = self._spawn_local_turbo_worker(
+            job_id=job_id, model_name=getattr(job.request, "model_name", "wan_2_1")
+        )
+        return {"boosted": bool(res.get("dispatched")), **res}
 
 
 # Global default orchestrator instance

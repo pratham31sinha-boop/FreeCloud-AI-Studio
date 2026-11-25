@@ -73,6 +73,8 @@ class GenerationPipeline:
         return {
             "job_id": job.job_id,
             "status": job.status,
+            "execution_mode": getattr(job.request, "execution_mode", "cloud_github"),
+            "model_relay": getattr(job.request, "model_relay", False),
             "progress_percent": job.progress_percent,
             "stage_message": job.stage_message,
             "target_workers": job.target_worker_count,

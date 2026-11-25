@@ -69,7 +69,13 @@ class TaskLeaseResponse(BaseModel):
     prompt_segment: Optional[str] = None
     anime_style: Optional[str] = None
     model_name: Optional[str] = "wan_2_1"
+    width: int = 1920
+    height: int = 1080
     anchor_frame_url: Optional[str] = None
+    video_code_url: Optional[str] = None
+    is_extended_clip: bool = False
+    previous_chunk_id: Optional[str] = None
+    previous_video_code: Optional[Dict[str, Any]] = None
     master_seed: Optional[int] = None
     characters: List[CharacterReferenceBundle] = Field(default_factory=list)
     motion_guidance: Optional[Dict[str, Any]] = None
@@ -90,6 +96,7 @@ class ChunkCompletionRequest(BaseModel):
     render_duration_sec: float
     output_frames_count: int = 0
     continuity_metrics: Dict[str, float] = Field(default_factory=dict)
+    video_code: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
 

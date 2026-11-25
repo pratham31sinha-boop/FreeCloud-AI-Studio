@@ -133,29 +133,69 @@ class VideoProcessor:
         logger.info("Assembled video %s (%d bytes)", output_mp4_path.name, output_mp4_path.stat().st_size)
         return output_mp4_path
 
+    def _probe_stream_signature(self, video_path: Path) -> Optional[Tuple[str, int, int, bool]]:
+        """Inspect video codec, resolution, and presence of audio via FFmpeg stderr."""
+        try:
+            res = subprocess.run(
+                [self.ffmpeg_exe, "-i", str(video_path)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            text = res.stderr or ""
+            has_h264 = "Video: h264" in text
+            has_aac = "Audio: aac" in text
+            cap = cv2.VideoCapture(str(video_path))
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap.release()
+            codec = "h264" if has_h264 else "other"
+            return (codec, w, h, has_aac)
+        except Exception:
+            return None
+
     def concatenate_video_chunks(
         self,
         chunk_paths: List[Path],
         output_path: Path,
         audio_source: Optional[Path] = None,
     ) -> Path:
-        """Concatenate multiple rendered MP4 chunks into a single seamless video."""
+        """Concatenate multiple rendered MP4 chunks into a single seamless video.
+
+        Uses near-instantaneous zero-loss stream copy (-c copy) whenever all chunks
+        share standardized H.264 + AAC formatting, falling back to high-speed
+        multi-threaded libx264 (-preset veryfast) otherwise.
+        """
         if not chunk_paths:
             raise VideoProcessingError("No video chunks provided for concatenation.")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # If only one chunk, copy or re-encode with audio
+        # Single chunk fast path
         if len(chunk_paths) == 1:
             cmd = [self.ffmpeg_exe, "-y", "-i", str(chunk_paths[0])]
             if audio_source and audio_source.is_file():
-                cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-shortest"])
-            cmd.extend(["-c:v", "copy", str(output_path)])
+                cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-b:a", "192k", "-shortest"])
+            else:
+                cmd.extend(["-c:a", "copy"])
+            sig = self._probe_stream_signature(chunk_paths[0])
+            vcodec = "copy" if (sig and sig[0] == "h264") else "libx264"
+            if vcodec == "copy":
+                cmd.extend(["-c:v", "copy", "-movflags", "+faststart", str(output_path)])
+            else:
+                cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(output_path)])
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
-                # Fallback to pure copy
                 output_path.write_bytes(chunk_paths[0].read_bytes())
             return output_path
+
+        # Check if all chunks share matching H.264 + AAC signatures for instant stream copy
+        sigs = [self._probe_stream_signature(p) for p in chunk_paths]
+        can_stream_copy = (
+            audio_source is None
+            and all(s is not None and s[0] == "h264" and s[3] is True for s in sigs)
+            and len(set((s[1], s[2]) for s in sigs if s)) == 1
+        )
 
         # Create concat demuxer list
         list_file = output_path.parent / f"concat_list_{os.getpid()}.txt"
@@ -174,27 +214,43 @@ class VideoProcessor:
             str(list_file),
         ]
 
-        if audio_source and audio_source.is_file():
-            cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-b:a", "192k", "-shortest"])
+        if can_stream_copy:
+            logger.info("All %d chunks are standardized H.264+AAC — executing <0.5s zero-loss stream-copy concat", len(chunk_paths))
+            cmd.extend(["-c", "copy", "-movflags", "+faststart", str(output_path)])
         else:
-            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            if audio_source and audio_source.is_file():
+                cmd.extend(["-i", str(audio_source), "-c:a", "aac", "-b:a", "192k", "-shortest"])
+            else:
+                cmd.extend(["-c:a", "aac", "-b:a", "192k"])
 
-        cmd.extend([
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ])
+            cmd.extend([
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "18",
+                "-threads",
+                "0",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ])
 
         try:
             res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0 and can_stream_copy:
+                # Safe automatic fallback to fast re-encode if stream copy hits container quirk
+                logger.warning("Stream-copy concat hit edge case, retrying with fast libx264 re-encode...")
+                fallback_cmd = [
+                    self.ffmpeg_exe, "-y", "-f", "concat", "-safe", "0", "-i", str(list_file),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-threads", "0",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+                    str(output_path),
+                ]
+                res = subprocess.run(fallback_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 raise VideoProcessingError(f"FFmpeg concat failed ({res.returncode}): {res.stderr}")
         finally:

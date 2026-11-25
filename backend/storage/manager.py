@@ -147,6 +147,20 @@ class StorageManager:
             return None
         return json.loads(meta_file.read_text())
 
+    def get_video_code_path(self, job_id: str, seq_idx: int) -> Path:
+        """Return path for stored Video-as-Code continuity manifest JSON."""
+        return self.artifacts_dir / f"{job_id}_video_code_{seq_idx}.json"
+
+    def get_video_code(self, job_id: str, seq_idx: int) -> Optional[dict]:
+        """Load stored Video-as-Code manifest JSON if available."""
+        p = self.get_video_code_path(job_id, seq_idx)
+        if p.is_file() and p.stat().st_size > 2:
+            try:
+                return json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+        return None
+
     def get_or_create_master_anchor(
         self, job_id: str, prompt: str, seed: int = 42, width: int = 1920, height: int = 1080
     ) -> Path:
@@ -155,40 +169,18 @@ class StorageManager:
         if anchor_path.is_file() and anchor_path.stat().st_size > 1000:
             return anchor_path
 
-        import urllib.request
         import cv2
-        import numpy as np
-        import logging
+        from backend.storage.scene_synthesizer import resolve_scene_anchor
 
-        logger = logging.getLogger(__name__)
-
-        # High-res curated photographic anchors for specific domains (Full HD 1080p)
-        p_lower = prompt.lower()
-        if any(k in p_lower for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
-            photographic_url = "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1920"
-            try:
-                req = urllib.request.Request(photographic_url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    arr = np.frombuffer(resp.read(), dtype=np.uint8)
-                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    if img is not None and img.shape[0] > 0 and img.shape[1] > 0:
-                        resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
-                        cv2.imwrite(str(anchor_path), resized)
-                        logger.info("Master vehicle anchor (1080p) saved to %s", anchor_path)
-                        return anchor_path
-            except Exception as exc:
-                logger.warning("Failed fetching photographic master anchor: %s", exc)
-
-        # Procedural fallback
-        np.random.seed(seed % (2**31 - 1))
-        x = np.linspace(0, 1, width)
-        y = np.linspace(0, 1, height)
-        xx, yy = np.meshgrid(x, y)
-        r = np.clip((np.sin(xx * 3.14 + seed * 0.1) * 0.5 + 0.5) * 220 + 30, 0, 255).astype(np.uint8)
-        g = np.clip((np.cos(yy * 3.14 + seed * 0.2) * 0.5 + 0.5) * 180 + 40, 0, 255).astype(np.uint8)
-        b = np.clip((np.sin((xx + yy) * 3.14 + seed * 0.3) * 0.5 + 0.5) * 240 + 15, 0, 255).astype(np.uint8)
-        frame = cv2.GaussianBlur(cv2.merge([b, g, r]), (51, 51), 0)
-        cv2.imwrite(str(anchor_path), frame)
+        img = resolve_scene_anchor(
+            prompt=prompt,
+            artifacts_dir=self.artifacts_dir,
+            seed=seed,
+            width=width,
+            height=height,
+            seq_idx=0,
+        )
+        cv2.imwrite(str(anchor_path), img)
         return anchor_path
 
     def get_or_create_act_anchor(
@@ -205,43 +197,25 @@ class StorageManager:
 
         # If seq_idx > 0 and no extended anchor is available yet, fall back to master anchor
         if seq_idx > 0:
-            master_anchor = self.get_or_create_master_anchor(job_id=job_id, prompt=prompt, seed=seed, width=width, height=height)
-            import shutil
+            master_anchor = self.get_or_create_master_anchor(
+                job_id=job_id, prompt=prompt, seed=seed, width=width, height=height
+            )
             shutil.copy2(master_anchor, anchor_path)
             return anchor_path
 
-        import urllib.request
         import cv2
-        import numpy as np
-        import logging
+        from backend.storage.scene_synthesizer import resolve_scene_anchor
 
-        logger = logging.getLogger(__name__)
-        p_lower = prompt.lower()
-
-        # Domain-specific progressive act sequences (Full HD 1080p)
-        if any(k in p_lower for k in ("car", "supercar", "hypercar", "vehicle", "race", "highway", "drift", "drive", "road")):
-            vehicle_acts = [
-                "https://images.pexels.com/photos/28498801/pexels-photo-28498801.jpeg?auto=compress&cs=tinysrgb&w=1920",  # Act 1: Launch at sunset
-                "https://images.pexels.com/photos/1545743/pexels-photo-1545743.jpeg?auto=compress&cs=tinysrgb&w=1920",   # Act 2: Coastal cruise
-                "https://images.pexels.com/photos/3802510/pexels-photo-3802510.jpeg?auto=compress&cs=tinysrgb&w=1920",   # Act 3: Hairpin drift
-                "https://images.pexels.com/photos/120049/pexels-photo-120049.jpeg?auto=compress&cs=tinysrgb&w=1920",    # Act 4: Night highway
-            ]
-            act_url = vehicle_acts[seq_idx % len(vehicle_acts)]
-            try:
-                logger.info("Fetching Act %d photographic anchor from %s...", seq_idx, act_url[:60])
-                req = urllib.request.Request(act_url, headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    arr = np.frombuffer(resp.read(), dtype=np.uint8)
-                    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-                    if img is not None and img.shape[0] > 0 and img.shape[1] > 0:
-                        resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LANCZOS4)
-                        cv2.imwrite(str(anchor_path), resized)
-                        logger.info("Act %d anchor successfully saved to %s (%d bytes)", seq_idx, anchor_path, len(open(str(anchor_path), "rb").read()))
-                        return anchor_path
-            except Exception as exc:
-                logger.warning("Failed fetching Act %d vehicle photographic anchor: %s", seq_idx, exc)
-
-        return self.get_or_create_master_anchor(job_id, prompt, seed=seed, width=width, height=height)
+        img = resolve_scene_anchor(
+            prompt=prompt,
+            artifacts_dir=self.artifacts_dir,
+            seed=seed,
+            width=width,
+            height=height,
+            seq_idx=seq_idx,
+        )
+        cv2.imwrite(str(anchor_path), img)
+        return anchor_path
 
 
 

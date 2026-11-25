@@ -216,25 +216,50 @@
                 <label class="form-label" for="resolutionSelect">Output Resolution</label>
                 <div class="select-wrapper">
                   <select id="resolutionSelect" class="form-select">
-                    <option value="640x360">360p Standard (Fast Preview)</option>
+                    <option value="640x360">360p Fast Draft</option>
                     <option value="854x480">480p SD (Balanced)</option>
-                    <option value="1280x720" selected>720p HD (Recommended)</option>
-                    <option value="1920x1080">1080p Full HD (High Quality)</option>
+                    <option value="1280x720">720p HD (Fast High Quality)</option>
+                    <option value="1920x1080" selected>1080p Full HD (Maximum Clarity)</option>
                   </select>
                 </div>
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="animeStyleSelect">AI Video Model & Visual Aesthetic</label>
+                <label class="form-label" for="animeStyleSelect">Visual Aesthetic</label>
                 <div class="select-wrapper">
                   <select id="animeStyleSelect" class="form-select">
-                    <option value="minimax_h3_cinematic" selected>MiniMax H3 Omni-Modal (High-End Video + Native Audio)</option>
-                    <option value="minimax_h3_anime">MiniMax H3 Anime (High-End Stylized + Native Audio)</option>
-                    <option value="ufotable_digital">Ufotable Digital Anime (High Action, Crisp Lineart)</option>
-                    <option value="shinkai_cinematic">Makoto Shinkai (Atmospheric Lighting & Skies)</option>
-                    <option value="mappa_action">MAPPA Dynamic Action (Gritty Contrast & Fast Motion)</option>
-                    <option value="ghibli_classic">Studio Ghibli Hand-Drawn (Vibrant Colors)</option>
-                    <option value="kyoani_soft">Kyoto Animation (Expressive Characters)</option>
+                    <option value="ufotable_digital" selected>Ufotable Digital Anime (Crisp Lineart &amp; Lighting)</option>
+                    <option value="wan_2_1_realistic">Photorealistic Cinema 8K</option>
+                    <option value="shinkai_cinematic">Makoto Shinkai (Atmospheric Skies)</option>
+                    <option value="mappa_action">MAPPA Dynamic Action</option>
+                    <option value="ghibli_classic">Studio Ghibli Hand-Drawn</option>
+                    <option value="minimax_h3_cinematic">MiniMax H3 Omni-Modal</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Foundation Model Pipeline & Independent Speed Mode -->
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="modelEngineSelect">Model Pipeline (Extend Clip)</label>
+                <div class="select-wrapper">
+                  <select id="modelEngineSelect" class="form-select">
+                    <option value="auto_relay" selected>⚡ Multi-Model Relay (Wan 2.1 → MiniMax H3 → Hunyuan)</option>
+                    <option value="wan_2_1">Alibaba Wan 2.1 / 2.6 (Motion Consistency)</option>
+                    <option value="minimax_h3">MiniMax H3 Omni-Modal (+ Native Stereo Audio)</option>
+                    <option value="hunyuan_video">Tencent HunyuanVideo (Cinema Grade)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="executionModeSelect">Execution Engine</label>
+                <div class="select-wrapper">
+                  <select id="executionModeSelect" class="form-select">
+                    <option value="independent_turbo" selected>⚡ Independent Turbo (Ultra-Fast, Zero External Wait)</option>
+                    <option value="hybrid">🌐 Hybrid (Instant Start + 4 GitHub Cloud Servers)</option>
+                    <option value="cloud_github">☁️ GitHub Cloud Only (4 × 16GB Cloud Servers)</option>
                   </select>
                 </div>
               </div>
@@ -314,7 +339,7 @@
           <!-- Distributed Worker Fleet Matrix -->
           <div class="worker-matrix-card">
             <div class="matrix-header">
-              <h3>GitHub Actions Worker Fleet</h3>
+              <h3>Worker Fleet &amp; Video-as-Code Relay</h3>
               <span class="fleet-count" id="fleetCountLabel">0 Active Workers</span>
             </div>
             <div class="worker-grid" id="workerGrid">
@@ -322,9 +347,16 @@
                 <p>Workers will be provisioned when job is submitted.</p>
               </div>
             </div>
+            <div id="videoCodeInspector" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">🧬 Latest Video-as-Code Handoff State (Model 1 → Model 2)</span>
+                <span id="videoCodeSummaryTag" style="font-size: 11px; color: #34d399; font-family: 'JetBrains Mono', monospace;">Active</span>
+              </div>
+              <pre id="videoCodeScriptBox" style="margin: 0; font-size: 11px; line-height: 1.4; color: #cbd5e1; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap; max-height: 150px; overflow-y: auto;"></pre>
+            </div>
             <div class="worker-actions">
               <button type="button" id="simulateWorkerBtn" class="btn-secondary" style="display: none;">
-                Execute Worker Chunk
+                Boost with Independent Worker
               </button>
             </div>
           </div>

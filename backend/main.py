@@ -98,6 +98,11 @@ def system_status():
 if settings.data_dir.is_dir():
     app.mount("/data", StaticFiles(directory=str(settings.data_dir)), name="data")
 
+# Mount brain artifact directory for interactive player & media inspection
+brain_dir = Path("/home/prathamsinha/.gemini/antigravity/brain/3240e840-4e95-4e36-b0c3-dd85b4ddd627")
+if brain_dir.is_dir():
+    app.mount("/brain", StaticFiles(directory=str(brain_dir)), name="brain")
+
 # Mount frontend static assets
 frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 if frontend_dir.is_dir():
@@ -109,6 +114,20 @@ if frontend_dir.is_dir():
         if index_file.is_file():
             return FileResponse(str(index_file))
         return {"message": "FreeCloud AI Studio frontend index.html not found"}
+
+    @app.get("/player", include_in_schema=False)
+    async def serve_player():
+        player_file = brain_dir / "video_studio_player.html"
+        if player_file.is_file():
+            return FileResponse(str(player_file))
+        return {"message": "Player file not found"}
+
+    @app.get("/clips", include_in_schema=False)
+    async def serve_clips():
+        clips_file = brain_dir / "jagdhatri_clips_viewer.html"
+        if clips_file.is_file():
+            return FileResponse(str(clips_file))
+        return {"message": "Clips viewer file not found"}
 
 
 if __name__ == "__main__":

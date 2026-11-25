@@ -143,3 +143,62 @@ def test_quality_checker():
     )
     assert report_fail.passed is False
     assert any("Identity consistency" in issue for issue in report_fail.issues_detected)
+
+
+def test_video_code_extraction_and_extended_prompt():
+    """Verify programmatic Video-as-Code manifest generation and extended prompt formatting."""
+    import cv2
+    import numpy as np
+    from backend.continuity.video_code import (
+        build_extended_clip_prompt,
+        extract_video_code_from_frames,
+    )
+    from backend.storage.scene_synthesizer import synthesize_crisp_scene_anchor
+
+    # 1. Verify offline crisp anchor generation is never blank/blurry
+    anchor = synthesize_crisp_scene_anchor(
+        "Enchanted elven forest cathedral with glowing spirit wings", seed=123, width=640, height=360
+    )
+    assert anchor.shape == (360, 640, 3)
+    edges = cv2.Canny(anchor, 80, 180)
+    assert int((edges > 0).sum()) > 500
+
+    # Shifted frame for optical flow continuity test
+    M = np.float32([[1, 0, 4], [0, 1, -1]])
+    shifted = cv2.warpAffine(anchor, M, (640, 360))
+
+    code = extract_video_code_from_frames(
+        prev_frame=anchor,
+        last_frame=shifted,
+        job_id="test_vc_01",
+        chunk_index=0,
+        chunk_id="test_vc_01_chk_001",
+        model_engine="wan_2_1",
+        prompt="Enchanted elven forest",
+        width=640,
+        height=360,
+        fps=24.0,
+        total_frames=120,
+        end_timestamp_sec=5.0,
+        total_duration_sec=20.0,
+        master_seed=123,
+        character_ids=["jagdhatri_main"],
+        worker_state={"end_zoom": 1.08, "stride_phase_rad": 2.5},
+    )
+    assert code["schema_version"] == "fc-video-code/v1"
+    assert code["model_engine"] == "wan_2_1"
+    assert code["camera_kinematics"]["end_zoom"] == 1.08
+    assert code["motion_and_physics"]["stride_phase_rad"] == 2.5
+    assert "extend_clip(" in code["scene_code_script"]
+
+    ext_prompt = build_extended_clip_prompt(
+        original_prompt="Enchanted elven forest",
+        next_scene_segment="Expanding wings of starlight",
+        prev_chunk_index=0,
+        next_chunk_index=1,
+        video_code=code,
+    )
+    assert "EXTENDED CLIP 2" in ext_prompt
+    assert "Last Frame Image & Coded Video State" in ext_prompt
+    assert "Expanding wings of starlight" in ext_prompt
+

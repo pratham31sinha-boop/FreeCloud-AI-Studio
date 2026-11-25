@@ -47,6 +47,8 @@ data/artifacts/*
 !data/artifacts/.gitkeep
 data/outputs/*
 !data/outputs/.gitkeep
+data/cache/*
+data/jobs_registry.json
 data/characters/*
 !data/characters/.gitkeep
 data/analysis/**

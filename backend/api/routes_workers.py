@@ -7,7 +7,7 @@ and report completions or failures.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from backend.continuity.character_refs import character_ref_manager
 from backend.storage.manager import storage_manager
@@ -39,13 +39,15 @@ def worker_heartbeat(req: WorkerHeartbeatRequest) -> WorkerHeartbeatResponse:
 
 
 @router.post("/claim-task", response_model=TaskLeaseResponse)
-def claim_task(worker_id: str) -> TaskLeaseResponse:
+def claim_task(worker_id: str, job_id: Optional[str] = None) -> TaskLeaseResponse:
     """Claim the next pending task chunk with continuity references."""
     char_dict = {
         c.character_id: c.model_dump()
         for c in character_ref_manager.list_characters()
     }
-    return worker_orchestrator.claim_task(worker_id, character_registry=char_dict)
+    return worker_orchestrator.claim_task(
+        worker_id, character_registry=char_dict, job_id=job_id
+    )
 
 
 @router.post("/{worker_id}/chunks/{chunk_id}/artifact")
